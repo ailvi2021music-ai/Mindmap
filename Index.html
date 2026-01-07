@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Mini MindMap</title>
+  <title>Mini MindMap (v2)</title>
   <meta name="theme-color" content="#0b1324" />
   <style>
     :root{
@@ -32,10 +32,12 @@
       background: linear-gradient(180deg, rgba(11,19,36,.92), rgba(11,19,36,.65));
       border-bottom:1px solid var(--stroke);
       backdrop-filter: blur(10px);
+      flex-wrap:wrap;
     }
     .brand{ display:flex; flex-direction:column; gap:2px; margin-right:8px; }
     .brand b{ font-size:14px; letter-spacing:.2px; }
     .brand span{ color:var(--muted); font-size:12px; }
+
     .btn{
       appearance:none; border:1px solid var(--stroke); background:var(--panel);
       color:var(--text); padding:9px 10px; border-radius:12px;
@@ -47,8 +49,12 @@
     .btn:active{ transform: translateY(1px); }
     .btn.primary{ border-color: rgba(89,195,255,.45); }
     .btn.danger{ border-color: rgba(255,92,122,.45); }
+    .btn.small{ padding:7px 9px; border-radius:10px; font-size:13px; }
     .sep{ width:1px; height:26px; background:var(--stroke); margin:0 2px; }
-    .hint{ margin-left:auto; color:var(--muted); font-size:12px; display:flex; gap:10px; align-items:center; }
+
+    .hint{
+      margin-left:auto; color:var(--muted); font-size:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+    }
     .hint code{ background:rgba(255,255,255,.06); border:1px solid var(--stroke); padding:2px 6px; border-radius:8px; color:var(--text); }
 
     .stageWrap{ flex:1; position:relative; overflow:hidden; }
@@ -66,6 +72,34 @@
 
     svg{ position:absolute; inset:0; touch-action:none; }
 
+    .link{
+      stroke: rgba(89,195,255,.55);
+      stroke-width: 2.2;
+      fill: none;
+    }
+    .link.selected{ stroke: rgba(255,92,122,.75); }
+
+    .group rect{
+      fill: rgba(255,255,255,.04);
+      stroke: rgba(255,255,255,.12);
+      stroke-width: 1.2;
+      rx: 18; ry: 18;
+    }
+    .group.selected rect{
+      stroke: rgba(89,195,255,.75);
+      stroke-width: 2.2;
+    }
+    .groupLabel{
+      font-size: 12px;
+      fill: rgba(234,242,255,.90);
+    }
+    .groupBadge{
+      fill: rgba(0,0,0,.25);
+      stroke: rgba(255,255,255,.12);
+      stroke-width: 1;
+      rx: 10; ry: 10;
+    }
+
     .node{
       cursor:grab;
       filter: drop-shadow(0 18px 40px rgba(0,0,0,.45));
@@ -78,7 +112,11 @@
       ry: var(--nodeRadius);
     }
     .node.selected rect{
-      stroke: rgba(89,195,255,.9);
+      stroke: rgba(89,195,255,.95);
+      stroke-width: 2.2;
+    }
+    .node.multi rect{
+      stroke: rgba(255,209,102,.9);
       stroke-width: 2.2;
     }
     .node text{
@@ -91,14 +129,9 @@
       fill: rgba(234,242,255,.72);
       font-size: 11.5px;
     }
-
-    .link{
-      stroke: rgba(89,195,255,.55);
-      stroke-width: 2.2;
-      fill: none;
-    }
-    .link.selected{
-      stroke: rgba(255,92,122,.75);
+    .icon{
+      font-size: 16px;
+      opacity:.95;
     }
 
     .toast{
@@ -111,7 +144,7 @@
       box-shadow: var(--shadow);
       opacity:0; pointer-events:none;
       transition: opacity .18s ease;
-      max-width:min(560px, calc(100% - 24px));
+      max-width:min(700px, calc(100% - 24px));
     }
     .toast.show{ opacity:1; }
 
@@ -119,7 +152,6 @@
 
     @media (max-width: 560px){
       .hint{ display:none; }
-      header{ flex-wrap:wrap; }
       .brand{ width:100%; }
       .brand span{ display:none; }
     }
@@ -130,17 +162,28 @@
   <header>
     <div class="brand">
       <b>Mini MindMap</b>
-      <span>Двойной тап/клик — новый узел • Shift+клик — связь • Автосейв включён</span>
+      <span>v2: авто-раскладка, цвета/иконки, группы • Shift+клик — связь • Ctrl/⌘+клик — мультивыбор</span>
     </div>
 
     <button class="btn primary" id="addRoot">+ Центр</button>
     <button class="btn" id="addChild">+ Дочерний</button>
-    <button class="btn danger" id="del">Удалить</button>
+    <button class="btn" id="autoLayout">Авто-раскладка</button>
+
     <div class="sep"></div>
+
+    <button class="btn" id="edit">Правка</button>
+    <button class="btn" id="setStyle">Стиль</button>
+    <button class="btn" id="makeGroup">Группа</button>
+    <button class="btn danger" id="del">Удалить</button>
+
+    <div class="sep"></div>
+
     <button class="btn" id="export">Экспорт</button>
     <label class="btn" for="importFile">Импорт</label>
     <input id="importFile" type="file" accept="application/json" />
+
     <div class="sep"></div>
+
     <button class="btn" id="resetView">Сброс вида</button>
     <button class="btn danger" id="clearAll">Очистить</button>
 
@@ -161,22 +204,36 @@
 <script>
 (() => {
   // ====== State ======
-  const STORAGE_KEY = "mini_mindmap_v1";
+  const STORAGE_KEY = "mini_mindmap_v2";
+  const OLD_KEY = "mini_mindmap_v1";
   const svg = document.getElementById("svg");
   const wrap = document.getElementById("wrap");
   const toast = document.getElementById("toast");
 
+  const PALETTE = [
+    {name:"Sky",    fill:"rgba(89,195,255,.12)", stroke:"rgba(89,195,255,.65)"},
+    {name:"Rose",   fill:"rgba(255,92,122,.11)", stroke:"rgba(255,92,122,.65)"},
+    {name:"Lime",   fill:"rgba(60,224,122,.10)", stroke:"rgba(60,224,122,.65)"},
+    {name:"Amber",  fill:"rgba(255,209,102,.10)", stroke:"rgba(255,209,102,.70)"},
+    {name:"Violet", fill:"rgba(176,122,255,.10)", stroke:"rgba(176,122,255,.70)"},
+    {name:"Slate",  fill:"rgba(255,255,255,.06)", stroke:"rgba(255,255,255,.22)"}
+  ];
+
   let state = {
-    nodes: [], // {id, x, y, text, note, w, h}
+    nodes: [], // {id, x, y, text, note, w, h, icon, style:{fill,stroke}, groupId?}
     links: [], // {id, a, b}
+    groups: [],// {id, name, style:{fill,stroke}, pad, locked?}
     view: { x: 0, y: 0, k: 1 }
   };
 
   let selectedNodeId = null;
   let selectedLinkId = null;
+  let selectedGroupId = null;
 
-  let drag = null;  // {type:'node'|'pan', id, sx, sy, ox, oy}
-  let linkDraft = null; // {fromId}
+  let multi = new Set(); // multi-selected node ids (Ctrl/Meta click)
+
+  let drag = null;  // {type:'node'|'pan'|'group', id, sx, sy, ox, oy, movedIds?}
+  let linkDraft = null; // {fromId, x, y}
 
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
 
@@ -198,9 +255,8 @@
   function setView(x, y, k){
     state.view.x = x;
     state.view.y = y;
-    state.view.k = Math.max(0.25, Math.min(2.5, k));
-    render();
-    save();
+    state.view.k = Math.max(0.25, Math.min(2.8, k));
+    render(); save();
   }
 
   function fitDefault(){
@@ -209,53 +265,156 @@
 
   // ====== Node sizing ======
   function measureNode(text, note){
-    const base = 90;
-    const extra = Math.min(320, text.length * 7.2);
-    const w = Math.max(base, extra) + 26;
-    const h = note ? 58 : 44;
+    const base = 96;
+    const extra = Math.min(340, (text || "").length * 7.2);
+    const w = Math.max(base, extra) + 30;
+    const h = note ? 60 : 46;
     return {w, h};
   }
 
-  function addNode(x, y, text="Идея", note=""){
+  function defaultStyle(){
+    // slightly random but stable-ish
+    return PALETTE[0];
+  }
+
+  function addNode(x, y, text="Идея", note="", icon="💡", style=defaultStyle()){
     const {w, h} = measureNode(text, note);
     const id = uid();
-    state.nodes.push({id, x, y, text, note, w, h});
+    state.nodes.push({
+      id, x, y, text, note, w, h,
+      icon: icon || "",
+      style: style ? {fill: style.fill, stroke: style.stroke} : {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke},
+      groupId: null
+    });
     selectNode(id);
-    save();
-    render();
+    save(); render();
     return id;
   }
 
   function addLink(a, b){
     if (!a || !b || a === b) return;
-    // prevent duplicates (undirected)
     const exists = state.links.some(l => (l.a===a && l.b===b) || (l.a===b && l.b===a));
     if (exists) return;
     state.links.push({id: uid(), a, b});
-    save();
-    render();
+    save(); render();
   }
 
   function getNode(id){ return state.nodes.find(n => n.id === id); }
   function getLink(id){ return state.links.find(l => l.id === id); }
+  function getGroup(id){ return state.groups.find(g => g.id === id); }
+
+  function clearSelection(){
+    selectedNodeId = null;
+    selectedLinkId = null;
+    selectedGroupId = null;
+    render();
+  }
 
   function selectNode(id){
     selectedNodeId = id;
     selectedLinkId = null;
+    selectedGroupId = null;
     render();
   }
   function selectLink(id){
     selectedLinkId = id;
     selectedNodeId = null;
+    selectedGroupId = null;
     render();
   }
-  function clearSelection(){
+  function selectGroup(id){
+    selectedGroupId = id;
     selectedNodeId = null;
     selectedLinkId = null;
     render();
   }
 
+  function toggleMulti(id){
+    if (multi.has(id)) multi.delete(id);
+    else multi.add(id);
+    // keep selectedNodeId as last clicked for "add child" etc.
+    selectedNodeId = id;
+    selectedLinkId = null;
+    selectedGroupId = null;
+    render();
+  }
+
+  // ====== Grouping ======
+  function computeGroupBounds(groupId){
+    const members = state.nodes.filter(n => n.groupId === groupId);
+    if (!members.length) return null;
+    let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
+    for (const n of members){
+      minX = Math.min(minX, n.x);
+      minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + n.w);
+      maxY = Math.max(maxY, n.y + n.h);
+    }
+    const g = getGroup(groupId);
+    const pad = (g && typeof g.pad === "number") ? g.pad : 28;
+    return {
+      x: minX - pad,
+      y: minY - pad - 18, // a bit space for label
+      w: (maxX - minX) + pad*2,
+      h: (maxY - minY) + pad*2 + 18
+    };
+  }
+
+  function createGroupFromMulti(){
+    const ids = [...multi];
+    if (ids.length < 2){
+      showToast("Нужно выбрать 2+ узла (Ctrl/⌘+клик)");
+      return;
+    }
+    const name = prompt("Название группы:", "Группа");
+    if (name === null) return;
+
+    const pal = pickPalettePrompt();
+    if (!pal) return;
+
+    const gid = uid();
+    state.groups.push({
+      id: gid,
+      name: (name || "Группа").trim() || "Группа",
+      style: {fill: pal.fill, stroke: pal.stroke},
+      pad: 30
+    });
+
+    ids.forEach(id => {
+      const n = getNode(id);
+      if (n) n.groupId = gid;
+    });
+
+    multi.clear();
+    selectGroup(gid);
+    save(); render();
+    showToast("Группа создана");
+  }
+
+  // ====== Delete ======
   function deleteSelected(){
+    if (selectedGroupId){
+      const gid = selectedGroupId;
+      // unassign nodes
+      state.nodes.forEach(n => { if (n.groupId === gid) n.groupId = null; });
+      state.groups = state.groups.filter(g => g.id !== gid);
+      selectedGroupId = null;
+      save(); render();
+      showToast("Группа удалена");
+      return;
+    }
+
+    if (multi.size){
+      const ids = new Set(multi);
+      state.links = state.links.filter(l => !ids.has(l.a) && !ids.has(l.b));
+      state.nodes = state.nodes.filter(n => !ids.has(n.id));
+      multi.clear();
+      selectedNodeId = null;
+      save(); render();
+      showToast("Узлы удалены");
+      return;
+    }
+
     if (selectedNodeId){
       const id = selectedNodeId;
       state.links = state.links.filter(l => l.a !== id && l.b !== id);
@@ -265,6 +424,7 @@
       showToast("Узел удалён");
       return;
     }
+
     if (selectedLinkId){
       state.links = state.links.filter(l => l.id !== selectedLinkId);
       selectedLinkId = null;
@@ -272,6 +432,7 @@
       showToast("Связь удалена");
       return;
     }
+
     showToast("Нечего удалять");
   }
 
@@ -279,19 +440,70 @@
   function save(){
     try{
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    }catch(e){ /* ignore */ }
+    }catch(e){}
+  }
+
+  function migrateIfNeeded(){
+    // If v2 exists -> load it; else if v1 exists -> migrate to v2
+    const v2 = localStorage.getItem(STORAGE_KEY);
+    if (v2) return;
+
+    const v1 = localStorage.getItem(OLD_KEY);
+    if (!v1) return;
+
+    try{
+      const old = JSON.parse(v1);
+      if (!old || !Array.isArray(old.nodes) || !Array.isArray(old.links)) return;
+      state.nodes = old.nodes.map(n => {
+        const {w,h} = measureNode(n.text || "Идея", n.note || "");
+        return {
+          id: n.id || uid(),
+          x: Number(n.x)||0,
+          y: Number(n.y)||0,
+          text: n.text || "Идея",
+          note: n.note || "",
+          w: n.w || w,
+          h: n.h || h,
+          icon: "💡",
+          style: {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke},
+          groupId: null
+        };
+      });
+      state.links = old.links.map(l => ({id: l.id || uid(), a: l.a, b: l.b})).filter(l => l.a && l.b);
+      state.groups = [];
+      state.view = old.view || {x:20,y:20,k:1};
+      save();
+    }catch(e){}
   }
 
   function load(){
     try{
+      migrateIfNeeded();
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return false;
       const obj = JSON.parse(raw);
       if (!obj || !Array.isArray(obj.nodes) || !Array.isArray(obj.links)) return false;
+
       state = obj;
-      // sanity defaults
+      state.groups ||= [];
       state.view ||= {x:20,y:20,k:1};
-      state.nodes.forEach(n => { n.w ||= 120; n.h ||= 44; });
+
+      // patch missing fields
+      state.nodes.forEach(n => {
+        n.text ||= "Идея";
+        n.note ||= "";
+        const {w,h} = measureNode(n.text, n.note);
+        n.w ||= w; n.h ||= h;
+        n.icon = (typeof n.icon === "string") ? n.icon : "💡";
+        if (!n.style) n.style = {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke};
+        if (!("groupId" in n)) n.groupId = null;
+      });
+      state.groups.forEach(g => {
+        g.name ||= "Группа";
+        g.pad = typeof g.pad === "number" ? g.pad : 30;
+        if (!g.style) g.style = {fill:"rgba(255,255,255,.05)", stroke:"rgba(255,255,255,.22)"};
+      });
+
       return true;
     }catch(e){ return false; }
   }
@@ -313,9 +525,29 @@
       try{
         const obj = JSON.parse(fr.result);
         if (!obj || !Array.isArray(obj.nodes) || !Array.isArray(obj.links)) throw new Error("bad");
+        obj.groups ||= [];
+        obj.view ||= {x:20,y:20,k:1};
+
+        // normalize
+        obj.nodes.forEach(n => {
+          n.text ||= "Идея";
+          n.note ||= "";
+          const {w,h} = measureNode(n.text, n.note);
+          n.w ||= w; n.h ||= h;
+          n.icon = (typeof n.icon === "string") ? n.icon : "";
+          if (!n.style) n.style = {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke};
+          if (!("groupId" in n)) n.groupId = null;
+        });
+        obj.groups.forEach(g => {
+          g.name ||= "Группа";
+          g.pad = typeof g.pad === "number" ? g.pad : 30;
+          if (!g.style) g.style = {fill:"rgba(255,255,255,.05)", stroke:"rgba(255,255,255,.22)"};
+        });
+
         state = obj;
-        state.view ||= {x:20,y:20,k:1};
-        selectedNodeId = null; selectedLinkId = null;
+        selectedNodeId = null; selectedLinkId = null; selectedGroupId = null;
+        multi.clear();
+
         save(); render();
         showToast("Импортировано");
       }catch(e){
@@ -325,18 +557,77 @@
     fr.readAsText(file);
   }
 
+  // ====== SVG helpers ======
+  function el(name, attrs={}){
+    const x = document.createElementNS("http://www.w3.org/2000/svg", name);
+    for (const [k,v] of Object.entries(attrs)) x.setAttribute(k, String(v));
+    return x;
+  }
+
   // ====== Rendering ======
   function render(){
-    // clear
     while(svg.firstChild) svg.removeChild(svg.firstChild);
 
-    // view group
-    const g = el("g", {
+    const gView = el("g", {
       transform: `translate(${state.view.x},${state.view.y}) scale(${state.view.k})`
     });
-    svg.appendChild(g);
+    svg.appendChild(gView);
 
-    // links under nodes
+    // 1) groups (behind)
+    state.groups.forEach(gr => {
+      const b = computeGroupBounds(gr.id);
+      if (!b) return;
+
+      const gg = el("g", {
+        class: "group" + (gr.id === selectedGroupId ? " selected" : ""),
+        transform: `translate(${b.x},${b.y})`,
+        "data-group-id": gr.id
+      });
+
+      const r = el("rect", {
+        width: b.w,
+        height: b.h,
+        style: `fill:${gr.style.fill};stroke:${gr.style.stroke};`
+      });
+
+      // label badge
+      const badge = el("rect", {
+        class:"groupBadge",
+        x: 14, y: 12, width: Math.max(70, (gr.name||"").length * 7.2 + 28), height: 22,
+        style: `fill: rgba(0,0,0,.28); stroke: rgba(255,255,255,.14);`
+      });
+
+      const t = el("text", {
+        class:"groupLabel",
+        x: 14 + 14,
+        y: 23
+      });
+      t.textContent = gr.name || "Группа";
+
+      gg.appendChild(r);
+      gg.appendChild(badge);
+      gg.appendChild(t);
+
+      // group drag/select
+      gg.addEventListener("pointerdown", (e) => {
+        e.stopPropagation();
+        selectGroup(gr.id);
+
+        // drag group: moves all member nodes together
+        const members = state.nodes.filter(n => n.groupId === gr.id).map(n => n.id);
+        drag = {
+          type: "group",
+          id: gr.id,
+          movedIds: members,
+          sx: e.clientX, sy: e.clientY
+        };
+        svg.setPointerCapture(e.pointerId);
+      });
+
+      gView.appendChild(gg);
+    });
+
+    // 2) links
     state.links.forEach(l => {
       const a = getNode(l.a), b = getNode(l.b);
       if (!a || !b) return;
@@ -344,7 +635,6 @@
       const ax = a.x + a.w/2, ay = a.y + a.h/2;
       const bx = b.x + b.w/2, by = b.y + b.h/2;
 
-      // nice curve
       const dx = (bx - ax);
       const c1x = ax + dx * 0.33;
       const c2x = ax + dx * 0.66;
@@ -359,10 +649,10 @@
         e.stopPropagation();
         selectLink(l.id);
       });
-      g.appendChild(path);
+      gView.appendChild(path);
     });
 
-    // link draft line
+    // draft link
     if (linkDraft && linkDraft.fromId){
       const from = getNode(linkDraft.fromId);
       if (from){
@@ -370,27 +660,50 @@
         const bx = linkDraft.x, by = linkDraft.y;
         const dx = (bx-ax);
         const d = `M ${ax} ${ay} C ${ax+dx*0.33} ${ay}, ${ax+dx*0.66} ${by}, ${bx} ${by}`;
-        g.appendChild(el("path", {d, class:"link", opacity:"0.6", "stroke-dasharray":"6 6"}));
+        gView.appendChild(el("path", {d, class:"link", opacity:"0.6", "stroke-dasharray":"6 6"}));
       }
     }
 
-    // nodes
+    // 3) nodes
     state.nodes.forEach(n => {
+      const isSel = n.id === selectedNodeId;
+      const isMulti = multi.has(n.id);
+
       const gn = el("g", {
-        class: "node" + (n.id === selectedNodeId ? " selected" : ""),
+        class: "node" + (isSel ? " selected" : "") + (isMulti ? " multi" : ""),
         transform: `translate(${n.x},${n.y})`,
         "data-node-id": n.id
       });
 
-      const r = el("rect", { width: n.w, height: n.h });
-      const title = el("text", { x: 14, y: n.h/2 - (n.note ? 8 : 0) });
+      const rect = el("rect", {
+        width: n.w, height: n.h,
+        style: `fill:${(n.style && n.style.fill) ? n.style.fill : "rgba(255,255,255,.07)"};`+
+               `stroke:${(n.style && n.style.stroke) ? n.style.stroke : "rgba(255,255,255,.18)"};`
+      });
+
+      const hasIcon = (n.icon && n.icon.trim().length > 0);
+      const leftPad = hasIcon ? 36 : 14;
+
+      // icon
+      if (hasIcon){
+        const ic = el("text", { x: 14, y: n.h/2 - (n.note ? 8 : 0), class:"icon" });
+        ic.textContent = n.icon;
+        gn.appendChild(ic);
+      }
+
+      const title = el("text", { x: leftPad, y: n.h/2 - (n.note ? 8 : 0) });
       title.textContent = n.text || "Идея";
 
-      gn.appendChild(r);
+      gn.appendChild(rect);
+      // keep icon/title above rect visually: append rect first, then texts
+      // (we appended rect already; but icon/title appended after. Fix ordering:)
+      // Reorder: move rect to first child
+      gn.insertBefore(rect, gn.firstChild);
+
       gn.appendChild(title);
 
       if (n.note){
-        const sub = el("text", { x: 14, y: n.h/2 + 14, class:"sub" });
+        const sub = el("text", { x: leftPad, y: n.h/2 + 14, class:"sub" });
         sub.textContent = n.note;
         gn.appendChild(sub);
       }
@@ -400,7 +713,14 @@
         e.stopPropagation();
         const nodeId = n.id;
 
-        // Shift+click: start linking
+        // Ctrl/Meta: multi select toggle
+        if (e.ctrlKey || e.metaKey){
+          toggleMulti(nodeId);
+          svg.setPointerCapture(e.pointerId);
+          return;
+        }
+
+        // Shift: link mode
         if (e.shiftKey){
           linkDraft = {fromId: nodeId, x: (n.x + n.w/2), y: (n.y + n.h/2)};
           selectNode(nodeId);
@@ -408,15 +728,16 @@
           return;
         }
 
-        // normal select + drag
+        // normal select + drag (if multi has this id -> drag all multi)
         selectNode(nodeId);
+
+        const draggingIds = multi.size ? (multi.has(nodeId) ? [...multi] : [nodeId]) : [nodeId];
         drag = {
           type: "node",
           id: nodeId,
-          sx: e.clientX,
-          sy: e.clientY,
-          ox: n.x,
-          oy: n.y
+          movedIds: draggingIds,
+          sx: e.clientX, sy: e.clientY,
+          ox: draggingIds.map(id => ({id, x:getNode(id)?.x||0, y:getNode(id)?.y||0}))
         };
         gn.style.cursor = "grabbing";
         svg.setPointerCapture(e.pointerId);
@@ -428,20 +749,13 @@
         editSelected();
       });
 
-      g.appendChild(gn);
+      gView.appendChild(gn);
     });
 
-    // apply cursor for panning mode
     wrap.style.cursor = isSpaceDown ? "grab" : "default";
   }
 
-  function el(name, attrs={}){
-    const x = document.createElementNS("http://www.w3.org/2000/svg", name);
-    for (const [k,v] of Object.entries(attrs)) x.setAttribute(k, String(v));
-    return x;
-  }
-
-  // ====== Editing ======
+  // ====== Editing (text) ======
   function editSelected(){
     const n = selectedNodeId ? getNode(selectedNodeId) : null;
     if (!n){ showToast("Выбери узел"); return; }
@@ -456,34 +770,203 @@
     n.note = (note || "").trim();
     const {w,h} = measureNode(n.text, n.note);
     n.w = w; n.h = h;
+
     save(); render();
   }
 
+  // ====== Style (icon/color/group assign) ======
+  function pickPalettePrompt(){
+    const msg =
+`Выбери стиль (введи номер):
+1) Sky
+2) Rose
+3) Lime
+4) Amber
+5) Violet
+6) Slate`;
+    const ans = prompt(msg, "1");
+    if (ans === null) return null;
+    const i = Math.max(1, Math.min(6, parseInt(ans,10) || 1)) - 1;
+    return PALETTE[i];
+  }
+
+  function styleSelected(){
+    const ids = multi.size ? [...multi] : (selectedNodeId ? [selectedNodeId] : []);
+    if (!ids.length){ showToast("Выбери узел (или несколько Ctrl/⌘+клик)"); return; }
+
+    const icon = prompt("Иконка (emoji), например: 💡 ✅ 🧪 🎯 📌 (пусто — убрать):", (ids.length===1 ? (getNode(ids[0]).icon||"") : "💡"));
+    if (icon === null) return;
+
+    const pal = pickPalettePrompt();
+    if (!pal) return;
+
+    const assignGroup = prompt(
+      "Группа: введи название существующей группы, или оставь пусто (не менять). \nЧтобы снять группу — введи: NONE",
+      ""
+    );
+    if (assignGroup === null) return;
+
+    let targetGroupId = null;
+    let mode = "keep";
+    const txt = (assignGroup || "").trim();
+    if (txt === "") mode = "keep";
+    else if (txt.toUpperCase() === "NONE") mode = "clear";
+    else {
+      const g = state.groups.find(x => (x.name||"").toLowerCase() === txt.toLowerCase());
+      if (!g){
+        showToast("Группы с таким названием нет (создай через кнопку Группа)");
+        return;
+      }
+      targetGroupId = g.id;
+      mode = "set";
+    }
+
+    ids.forEach(id => {
+      const n = getNode(id);
+      if (!n) return;
+      n.icon = (icon || "").trim();
+      n.style = {fill: pal.fill, stroke: pal.stroke};
+      if (mode === "set") n.groupId = targetGroupId;
+      if (mode === "clear") n.groupId = null;
+    });
+
+    save(); render();
+    showToast(ids.length > 1 ? "Стиль применён к узлам" : "Стиль применён");
+  }
+
+  // ====== Auto layout (radial) ======
+  function autoLayout(){
+    // choose root: selected node -> else first node
+    const rootId = selectedNodeId || (state.nodes[0] && state.nodes[0].id);
+    if (!rootId){ showToast("Нет узлов"); return; }
+
+    // build adjacency
+    const adj = new Map();
+    for (const n of state.nodes) adj.set(n.id, []);
+    for (const l of state.links){
+      if (!adj.has(l.a) || !adj.has(l.b)) continue;
+      adj.get(l.a).push(l.b);
+      adj.get(l.b).push(l.a);
+    }
+
+    // BFS spanning tree (avoid cycles)
+    const parent = new Map();
+    const children = new Map();
+    for (const n of state.nodes) children.set(n.id, []);
+    parent.set(rootId, null);
+
+    const q = [rootId];
+    const seen = new Set([rootId]);
+    while(q.length){
+      const v = q.shift();
+      const neigh = adj.get(v) || [];
+      for (const u of neigh){
+        if (seen.has(u)) continue;
+        seen.add(u);
+        parent.set(u, v);
+        children.get(v).push(u);
+        q.push(u);
+      }
+    }
+
+    // subtree sizes
+    const size = new Map();
+    function dfs(v){
+      let s = 1;
+      for (const c of children.get(v) || []) s += dfs(c);
+      size.set(v, s);
+      return s;
+    }
+    dfs(rootId);
+
+    // place nodes: root at center of current view
+    const r = svg.getBoundingClientRect();
+    const center = clientToWorld(r.left + r.width/2, r.top + r.height/2);
+    const ring = 170;
+    const jitter = 6;
+
+    // angles allocation by subtree weights
+    function place(v, depth, a0, a1){
+      const n = getNode(v);
+      if (!n) return;
+
+      const ang = (a0 + a1) / 2;
+      const radius = depth * ring;
+
+      if (depth === 0){
+        n.x = center.x - n.w/2;
+        n.y = center.y - n.h/2;
+      } else {
+        const x = center.x + Math.cos(ang) * radius;
+        const y = center.y + Math.sin(ang) * radius;
+        n.x = x - n.w/2 + (Math.random()*2-1)*jitter;
+        n.y = y - n.h/2 + (Math.random()*2-1)*jitter;
+      }
+
+      const kids = children.get(v) || [];
+      if (!kids.length) return;
+
+      // distribute angles across [a0, a1] proportionally to subtree sizes
+      const total = kids.reduce((acc,c)=> acc + (size.get(c)||1), 0);
+      let cur = a0;
+      for (const c of kids){
+        const w = (size.get(c)||1) / total;
+        const span = (a1 - a0) * w;
+        const next = cur + span;
+        place(c, depth+1, cur, next);
+        cur = next;
+      }
+    }
+
+    // if only root has no children, still ok
+    // allocate full circle, but reserve a small gap for readability
+    place(rootId, 0, -Math.PI + 0.2, Math.PI - 0.2);
+
+    // also place disconnected components (no path from root)
+    const placed = new Set([rootId]);
+    for (const [k] of parent.entries()) placed.add(k);
+
+    const unplaced = state.nodes.filter(n => !placed.has(n.id)).map(n=>n.id);
+    if (unplaced.length){
+      // pack them around outer ring on the right
+      const baseR = 3 * ring;
+      unplaced.forEach((id, i) => {
+        const n = getNode(id);
+        if (!n) return;
+        const ang = (i / unplaced.length) * (Math.PI*2);
+        const x = center.x + Math.cos(ang) * baseR + ring*1.2;
+        const y = center.y + Math.sin(ang) * baseR;
+        n.x = x - n.w/2;
+        n.y = y - n.h/2;
+      });
+    }
+
+    // ensure groups still look good (they auto-bounds)
+    save(); render();
+    showToast("Авто-раскладка готова");
+  }
+
   // ====== Events ======
-  // Background interactions: double click creates node; click clears selection; pan with Space
+  // Background: click clears selection; double click creates node
   svg.addEventListener("pointerdown", (e) => {
-    // start panning if space pressed
     if (isSpaceDown){
-      drag = {
-        type: "pan",
-        sx: e.clientX,
-        sy: e.clientY,
-        ox: state.view.x,
-        oy: state.view.y
-      };
+      drag = { type:"pan", sx:e.clientX, sy:e.clientY, ox:state.view.x, oy:state.view.y };
       svg.setPointerCapture(e.pointerId);
       wrap.style.cursor = "grabbing";
       return;
     }
-    clearSelection();
+    // click on empty: clear selection & multi
+    if (!findNodeFromEvent(e) && !findGroupFromEvent(e) && !findLinkFromEvent(e)){
+      multi.clear();
+      clearSelection();
+    }
   });
 
   svg.addEventListener("dblclick", (e) => {
     // Create node at cursor
     const p = clientToWorld(e.clientX, e.clientY);
-    const id = addNode(p.x - 60, p.y - 22, "Новая идея", "");
-    // if node selected previously - link from it
-    // (optional: no automatic)
+    const id = addNode(p.x - 60, p.y - 22, "Новая идея", "", "💡", PALETTE[0]);
+    // if you had a selected node and not multi, you can quickly link by holding Shift instead
   });
 
   svg.addEventListener("pointermove", (e) => {
@@ -497,12 +980,34 @@
     }
 
     if (drag.type === "node"){
-      const n = getNode(drag.id);
-      if (!n) return;
       const dx = (e.clientX - drag.sx) / state.view.k;
       const dy = (e.clientY - drag.sy) / state.view.k;
-      n.x = drag.ox + dx;
-      n.y = drag.oy + dy;
+
+      for (const item of drag.ox){
+        const n = getNode(item.id);
+        if (!n) continue;
+        n.x = item.x + dx;
+        n.y = item.y + dy;
+      }
+      render();
+      return;
+    }
+
+    if (drag.type === "group"){
+      const dx = (e.clientX - drag.sx) / state.view.k;
+      const dy = (e.clientY - drag.sy) / state.view.k;
+      // move all nodes in group
+      const ids = drag.movedIds || [];
+      // snapshot base positions on first move
+      if (!drag.ox){
+        drag.ox = ids.map(id => ({id, x:getNode(id)?.x||0, y:getNode(id)?.y||0}));
+      }
+      for (const item of drag.ox){
+        const n = getNode(item.id);
+        if (!n) continue;
+        n.x = item.x + dx;
+        n.y = item.y + dy;
+      }
       render();
       return;
     }
@@ -519,7 +1024,6 @@
 
   svg.addEventListener("pointerup", (e) => {
     if (linkDraft){
-      // if pointer up on a node -> connect
       const target = findNodeFromEvent(e);
       if (target && target !== linkDraft.fromId){
         addLink(linkDraft.fromId, target);
@@ -550,15 +1054,35 @@
     return null;
   }
 
-  // Zoom with wheel (zoom to cursor)
+  function findGroupFromEvent(e){
+    const path = e.composedPath ? e.composedPath() : [];
+    for (const el of path){
+      if (!el || !el.getAttribute) continue;
+      const id = el.getAttribute("data-group-id");
+      if (id) return id;
+    }
+    return null;
+  }
+
+  function findLinkFromEvent(e){
+    const path = e.composedPath ? e.composedPath() : [];
+    for (const el of path){
+      if (!el || !el.getAttribute) continue;
+      const id = el.getAttribute("data-link-id");
+      if (id) return id;
+    }
+    return null;
+  }
+
+  // Zoom
   wrap.addEventListener("wheel", (e) => {
     e.preventDefault();
     const delta = Math.sign(e.deltaY);
     const factor = delta > 0 ? 0.92 : 1.08;
 
     const before = clientToWorld(e.clientX, e.clientY);
-    const nk = Math.max(0.25, Math.min(2.5, state.view.k * factor));
-    // adjust view so cursor stays put
+    const nk = Math.max(0.25, Math.min(2.8, state.view.k * factor));
+
     const r = svg.getBoundingClientRect();
     const vx = e.clientX - r.left;
     const vy = e.clientY - r.top;
@@ -570,8 +1094,7 @@
     state.view.x = nx;
     state.view.y = ny;
 
-    render();
-    save();
+    render(); save();
   }, {passive:false});
 
   // Keyboard shortcuts
@@ -581,7 +1104,6 @@
     if (e.code === "Space"){
       isSpaceDown = true;
       wrap.style.cursor = "grab";
-      // prevent page scroll
       e.preventDefault();
     }
     if (e.key === "Delete" || e.key === "Backspace"){
@@ -592,14 +1114,12 @@
       if (selectedNodeId) editSelected();
       e.preventDefault();
     }
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s"){
-      save();
-      showToast("Сохранено");
-      e.preventDefault();
+    if (e.key === "Escape"){
+      multi.clear();
+      clearSelection();
     }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "e"){
-      exportJSON();
-      e.preventDefault();
+      exportJSON(); e.preventDefault();
     }
   });
 
@@ -610,16 +1130,29 @@
     }
   });
 
-  // Buttons
+  // Improve touch: long-press edit on mobile
+  let pressTimer = null;
+  svg.addEventListener("pointerdown", (e) => {
+    const nodeId = findNodeFromEvent(e);
+    if (!nodeId) return;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      selectNode(nodeId);
+      editSelected();
+    }, 560);
+  });
+  svg.addEventListener("pointerup", () => clearTimeout(pressTimer));
+  svg.addEventListener("pointercancel", () => clearTimeout(pressTimer));
+
+  // ====== Buttons ======
   document.getElementById("addRoot").addEventListener("click", () => {
     if (state.nodes.length === 0){
-      addNode(240, 180, "Центральная идея", "кратко");
+      addNode(240, 180, "Центральная идея", "двойной клик — новый узел", "🎯", PALETTE[0]);
       showToast("Создан центр");
     } else {
-      // add another root near view center
       const r = svg.getBoundingClientRect();
       const p = clientToWorld(r.left + r.width/2, r.top + r.height/2);
-      addNode(p.x - 60, p.y - 22, "Новая идея", "");
+      addNode(p.x - 60, p.y - 22, "Новая идея", "", "💡", PALETTE[0]);
       showToast("Добавлен узел");
     }
   });
@@ -630,12 +1163,25 @@
       return;
     }
     const parent = getNode(selectedNodeId);
-    const id = addNode(parent.x + parent.w + 60, parent.y + 10, "Дочерняя идея", "");
+    const pal = parent?.style ? parent.style : PALETTE[0];
+    const id = addNode(parent.x + parent.w + 70, parent.y + 10, "Дочерняя идея", "", "✅", pal);
     addLink(parent.id, id);
     showToast("Добавлен дочерний + связь");
   });
 
+  document.getElementById("autoLayout").addEventListener("click", autoLayout);
+
+  document.getElementById("edit").addEventListener("click", () => {
+    if (!selectedNodeId){ showToast("Выбери узел"); return; }
+    editSelected();
+  });
+
+  document.getElementById("setStyle").addEventListener("click", styleSelected);
+
+  document.getElementById("makeGroup").addEventListener("click", createGroupFromMulti);
+
   document.getElementById("del").addEventListener("click", deleteSelected);
+
   document.getElementById("export").addEventListener("click", exportJSON);
 
   document.getElementById("importFile").addEventListener("change", (e) => {
@@ -653,36 +1199,25 @@
     if (!confirm("Удалить всё?")) return;
     state.nodes = [];
     state.links = [];
+    state.groups = [];
     selectedNodeId = null;
     selectedLinkId = null;
+    selectedGroupId = null;
+    multi.clear();
     fitDefault();
     save(); render();
     showToast("Очищено");
   });
 
-  // Initial
+  // ====== Init ======
   const ok = load();
   if (!ok){
     fitDefault();
-    // optional: start with one node
-    addNode(240, 180, "Центральная идея", "двойной клик — новый узел");
+    addNode(240, 180, "Центральная идея", "Shift+клик: связь • Ctrl/⌘+клик: мультивыбор", "🎯", PALETTE[0]);
   } else {
     render();
   }
 
-  // Improve touch: long-press edit on mobile
-  let pressTimer = null;
-  svg.addEventListener("pointerdown", (e) => {
-    const nodeId = findNodeFromEvent(e);
-    if (!nodeId) return;
-    clearTimeout(pressTimer);
-    pressTimer = setTimeout(() => {
-      selectNode(nodeId);
-      editSelected();
-    }, 550);
-  });
-  svg.addEventListener("pointerup", () => clearTimeout(pressTimer));
-  svg.addEventListener("pointercancel", () => clearTimeout(pressTimer));
 })();
 </script>
 </body>
