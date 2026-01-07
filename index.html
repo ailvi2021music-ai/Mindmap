@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>MindMap Pro Lite (v7)</title>
+  <title>MindMap Pro Lite (v8)</title>
   <meta name="theme-color" content="#f3f7ff" />
   <style>
     :root{
@@ -17,7 +17,6 @@
       --toolText:rgba(255,255,255,.92);
       --toolStroke:rgba(255,255,255,.10);
     }
-
     *{ box-sizing:border-box; }
     html,body{
       height:100%;
@@ -31,9 +30,7 @@
         linear-gradient(180deg, #f7fbff, #eef4ff 55%, #f8fbff);
       overflow:hidden;
     }
-
     .app{ height:100%; display:flex; flex-direction:column; }
-
     header{
       display:flex; gap:10px; align-items:center; padding:12px 14px;
       position:sticky; top:0; z-index:30;
@@ -78,7 +75,6 @@
       z-index:1;
     }
 
-    /* Left toolbar */
     .leftbar{
       position:absolute;
       left:14px; top:14px;
@@ -128,7 +124,6 @@
     }
     .toolbtn:hover .toolhint{ opacity:1; }
 
-    /* Context toolbar (floating) */
     .ctx{
       position:absolute;
       z-index:50;
@@ -208,7 +203,7 @@
   <header>
     <div class="brand">
       <b>MindMap Pro Lite</b>
-      <span>Двойной клик по узлу — дочерний • Тройной клик — редактирование внутри узла • Ctrl+/ — свернуть/развернуть</span>
+      <span>Двойной клик по узлу — дочерний • Тройной клик — редактирование • Ctrl+/ — свернуть/развернуть</span>
     </div>
 
     <button class="btn primary" id="addRoot">+ Центр</button>
@@ -255,8 +250,8 @@
 
 <script>
 (() => {
-  const STORAGE_KEY = "mindmap_pro_lite_v7";
-  const MIGRATE_KEYS = ["mindmap_pro_lite_v6","mini_mindmap_v5","mini_mindmap_v4","mini_mindmap_v3","mini_mindmap_v2","mini_mindmap_v1"];
+  const STORAGE_KEY = "mindmap_pro_lite_v8";
+  const MIGRATE_KEYS = ["mindmap_pro_lite_v7","mindmap_pro_lite_v6","mini_mindmap_v5","mini_mindmap_v4","mini_mindmap_v3","mini_mindmap_v2","mini_mindmap_v1"];
 
   const svg = document.getElementById("svg");
   const wrap = document.getElementById("wrap");
@@ -277,23 +272,25 @@
   let tool = "select";
 
   let state = {
-    nodes: [], // {id,x,y,w,h,text,icon,style, childColorNext, type, collapsed, parentId}
-    links: [], // {id,a,b}
+    nodes: [],
+    links: [],
     view: {x:24,y:24,k:1}
   };
 
   let selectedNodeId = null;
   let editingNodeId = null;
 
-  // gestures
   let drag = null; // {type:'node'|'pan', pointerId, sx,sy, moved, base:{x,y} or ox,oy}
   const pointers = new Map();
   let pinch = null;
   const DRAG_THRESHOLD = 6;
 
-  // tap logic (replaces click)
-  const tap = { nodeId:null, count:0, t:0, timer:null };
+  // tap system (now handled on SVG pointerup due to pointer capture)
+  const tap = { nodeId:null, count:0, t:0, timer:null, textDiv:null };
   const TAP_WINDOW = 420;
+
+  // which node did we press last (for SVG pointerup routing)
+  let activeNodeForTap = null;
 
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
 
@@ -323,7 +320,7 @@
     };
   }
 
-  // ====== sizing: compact again (height fixed) ======
+  // compact sizing (height fixed, text clamped to 2 lines)
   const measurer = document.createElement("canvas");
   const mctx = measurer.getContext("2d");
   const FONT = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
@@ -334,7 +331,6 @@
     const raw = mctx.measureText(t).width;
     const minW = 150;
     const maxW = 360;
-    // icon+gap+padding reserve (~72)
     const w = Math.max(minW, Math.min(maxW, Math.ceil(raw + 72)));
     const h = 58;
     return {w,h};
@@ -501,12 +497,10 @@
     save(); render();
   }
 
-  // ===== inline edit =====
   function beginInlineEdit(nodeId, textDiv){
     const n = getNode(nodeId);
     if (!n || !textDiv) return;
 
-    // cancel any pending tap action
     if (tap.timer){ clearTimeout(tap.timer); tap.timer=null; }
 
     editingNodeId = nodeId;
@@ -558,7 +552,7 @@
     textDiv.addEventListener("blur", onBlur);
   }
 
-  // ===== context toolbar position: ALWAYS BELOW NODE =====
+  // toolbar position: BELOW and CLOSE (6px)
   function positionContextToolbar(){
     if (!selectedNodeId) { ctx.style.display="none"; return; }
     const n = getNode(selectedNodeId);
@@ -569,7 +563,7 @@
     const nodeH = n.h * state.view.k;
 
     const left = tl.x + nodeW/2 - 180;
-    const top  = tl.y + nodeH + 10; // BELOW
+    const top  = tl.y + nodeH + 6; // close to node
 
     ctx.style.display = "flex";
     ctx.style.left = Math.max(12, Math.min(window.innerWidth - 380, left)) + "px";
@@ -579,7 +573,6 @@
     document.getElementById("ctxCollapse").style.opacity = kids.length ? "1" : ".45";
   }
 
-  // ===== render =====
   function render(){
     while(svg.firstChild) svg.removeChild(svg.firstChild);
     const gView = el("g", { transform: `translate(${state.view.x},${state.view.y}) scale(${state.view.k})` });
@@ -620,7 +613,6 @@
       const fo = el("foreignObject", { x:0, y:0, width:n.w, height:n.h });
       const div = document.createElement("div");
       div.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
-      // IMPORTANT: center again
       div.style.cssText = `
         width:${n.w}px; height:${n.h}px;
         display:flex; align-items:center; gap:10px;
@@ -650,7 +642,7 @@
         cursor: default;
         pointer-events:auto;
         display:-webkit-box;
-        -webkit-line-clamp: 2;      /* compact */
+        -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
       `;
       text.textContent = n.text || "";
@@ -660,12 +652,14 @@
       fo.appendChild(div);
       gn.appendChild(fo);
 
-      // pointerdown on node: select + start drag candidate
+      // IMPORTANT: node pointerdown only sets active node for tap logic.
       gn.addEventListener("pointerdown", (e) => {
         e.stopPropagation();
         if (editingNodeId) return;
 
         selectedNodeId = n.id;
+        activeNodeForTap = { id: n.id, textDiv: text };
+
         render();
         positionContextToolbar();
 
@@ -677,39 +671,6 @@
 
         drag = { type:"node", pointerId:e.pointerId, sx:e.clientX, sy:e.clientY, moved:false, base:{x:n.x, y:n.y} };
         svg.setPointerCapture(e.pointerId);
-      });
-
-      // pointerup on node: if not moved => count taps (double/triple)
-      gn.addEventListener("pointerup", (e) => {
-        e.stopPropagation();
-        if (editingNodeId) return;
-
-        // ignore if drag moved
-        if (drag && drag.type === "node" && drag.pointerId === e.pointerId && drag.moved) return;
-
-        const now = Date.now();
-        const same = (tap.nodeId === n.id) && (now - tap.t <= TAP_WINDOW);
-        tap.nodeId = n.id;
-        tap.t = now;
-        tap.count = same ? (tap.count + 1) : 1;
-
-        if (tap.timer) clearTimeout(tap.timer);
-
-        // Decide after window ends:
-        tap.timer = setTimeout(() => {
-          if (tap.nodeId !== n.id) return;
-
-          if (tap.count === 2){
-            const childId = addChildFrom(n.id);
-            selectedNodeId = childId;
-            render(); positionContextToolbar();
-          } else if (tap.count >= 3){
-            beginInlineEdit(n.id, text);
-          }
-          tap.count = 0;
-          tap.nodeId = null;
-          tap.timer = null;
-        }, TAP_WINDOW + 30);
       });
 
       gView.appendChild(gn);
@@ -744,7 +705,7 @@
     positionContextToolbar();
   }
 
-  // background interactions (pan + pinch)
+  // ===== background gestures (pan/zoom) + node drag =====
   svg.addEventListener("pointerdown", (e) => {
     pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
 
@@ -756,7 +717,8 @@
 
     const nodeId = findNodeFromEvent(e);
     if (!nodeId){
-      // empty area click behavior for tool modes
+      activeNodeForTap = null;
+
       if (tool === "node" || tool === "sticky" || tool === "text"){
         const p = clientToWorld(e.clientX, e.clientY);
         if (tool === "node") addNode(p.x-90, p.y-30, "Новая идея", "💡", PALETTE[0], "mind");
@@ -819,24 +781,60 @@
     }
   });
 
+  // CRITICAL: tap counting happens here (SVG gets pointerup due to capture)
   svg.addEventListener("pointerup", (e) => {
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = null;
 
+    // finish drag
+    let moved = false;
     if (drag && drag.pointerId === e.pointerId){
-      const moved = drag.moved;
+      moved = !!drag.moved;
       drag = null;
       if (moved) save();
-      render(); positionContextToolbar();
     }
+
+    // no node => nothing to count
+    if (!activeNodeForTap || editingNodeId) { render(); positionContextToolbar(); return; }
+
+    // if it was a drag, don't treat as click
+    if (moved) { render(); positionContextToolbar(); return; }
+
+    // count taps
+    const nodeId = activeNodeForTap.id;
+    const textDiv = activeNodeForTap.textDiv;
+
+    const now = Date.now();
+    const same = (tap.nodeId === nodeId) && (now - tap.t <= TAP_WINDOW);
+    tap.nodeId = nodeId;
+    tap.textDiv = textDiv;
+    tap.t = now;
+    tap.count = same ? (tap.count + 1) : 1;
+
+    if (tap.timer) clearTimeout(tap.timer);
+
+    tap.timer = setTimeout(() => {
+      if (tap.nodeId !== nodeId) return;
+
+      if (tap.count === 2){
+        const childId = addChildFrom(nodeId);
+        selectedNodeId = childId;
+        render(); positionContextToolbar();
+      } else if (tap.count >= 3){
+        beginInlineEdit(nodeId, tap.textDiv);
+      }
+
+      tap.count = 0;
+      tap.nodeId = null;
+      tap.textDiv = null;
+      tap.timer = null;
+    }, TAP_WINDOW + 30);
+
+    render(); positionContextToolbar();
   });
 
   wrap.addEventListener("wheel", (e) => {
     e.preventDefault();
-    seeWheelZoom(e);
-  }, {passive:false});
-
-  function seeWheelZoom(e){
     const delta = Math.sign(e.deltaY);
     const factor = delta > 0 ? 0.92 : 1.08;
 
@@ -852,7 +850,7 @@
     state.view.y = vy - before.y * nk;
 
     render(); save();
-  }
+  }, {passive:false});
 
   // desktop dblclick empty => new node
   svg.addEventListener("dblclick", (e) => {
@@ -872,10 +870,10 @@
     return null;
   }
 
-  // ===== context toolbar actions =====
+  // context toolbar actions
   document.getElementById("ctxChild").onclick = () => { if (selectedNodeId) addChildFrom(selectedNodeId); };
   document.getElementById("ctxSibling").onclick = () => { if (selectedNodeId) addSiblingFrom(selectedNodeId); };
-  document.getElementById("ctxRename").onclick = () => showToast("Тройной клик по узлу — редактирование текста");
+  document.getElementById("ctxRename").onclick = () => showToast("Тройной клик по узлу — редактирование");
   document.getElementById("ctxColor").onclick = () => {
     const n = getNode(selectedNodeId); if (!n) return;
     const i = PALETTE.findIndex(p => p.fill === n.style.fill && p.stroke === n.style.stroke);
@@ -913,7 +911,7 @@
     showToast("Удалено");
   }
 
-  // ===== left toolbar =====
+  // left toolbar
   function setTool(t){
     tool = t;
     document.querySelectorAll(".toolbtn").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
@@ -935,7 +933,7 @@
     setTool(btn.dataset.tool);
   });
 
-  // ===== header buttons =====
+  // header buttons
   document.getElementById("addRoot").onclick = () => {
     if (state.nodes.length === 0){
       addNode(260, 180, "Центральная идея", "🎯", PALETTE[0], "mind");
@@ -1000,7 +998,6 @@
 
   document.getElementById("autoLayout").onclick = () => {
     if (!state.nodes.length){ showToast("Нет узлов"); return; }
-    // simple layout: put root in center, children to right
     const root = state.nodes.find(n => !n.parentId) || state.nodes[0];
     const r = svg.getBoundingClientRect();
     const center = clientToWorld(r.left + r.width/2, r.top + r.height/2);
@@ -1019,7 +1016,6 @@
     showToast("Авто-раскладка готова");
   };
 
-  // shortcuts
   window.addEventListener("keydown", (e) => {
     const k = e.key.toLowerCase();
     if (k === "v") setTool("select");
@@ -1033,7 +1029,6 @@
       e.preventDefault();
       if (selectedNodeId) toggleCollapse(selectedNodeId);
     }
-
     if (e.key === "Tab" && selectedNodeId && !editingNodeId){
       e.preventDefault();
       addChildFrom(selectedNodeId);
