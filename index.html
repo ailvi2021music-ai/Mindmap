@@ -12,7 +12,6 @@
       --stroke:rgba(11,19,36,.12);
       --shadow: 0 18px 60px rgba(10,20,40,.14);
       --grid:rgba(10,20,40,.06);
-      --radius:16px;
       --tool:rgba(20,28,40,.88);
       --toolText:rgba(255,255,255,.92);
       --toolStroke:rgba(255,255,255,.10);
@@ -138,6 +137,12 @@
       user-select:none;
       -webkit-user-select:none;
     }
+    /* When editing, allow text selection in the scene */
+    #scene.allowSelect{
+      user-select:text;
+      -webkit-user-select:text;
+    }
+
     #world{
       position:absolute;
       left:0; top:0;
@@ -218,20 +223,29 @@
       white-space: pre-wrap;
     }
 
+    /* New collapse dot: hollow/filled circle with node color */
     .collapseDot{
       position:absolute;
-      width: 22px; height: 22px;
+      width: 18px; height: 18px;
       border-radius: 999px;
-      background: rgba(255,255,255,.92);
-      border:1px solid rgba(11,19,36,.16);
-      box-shadow: 0 10px 18px rgba(10,20,40,.18);
-      display:flex;
-      align-items:center;
-      justify-content:center;
-      font-size: 16px;
+      box-shadow: 0 10px 18px rgba(10,20,40,.12);
       cursor: pointer;
       user-select:none;
       -webkit-user-select:none;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: rgba(255,255,255,.90);
+      border: 2px solid rgba(11,19,36,.22);
+    }
+    .collapseDot .inner{
+      width: 10px; height: 10px;
+      border-radius: 999px;
+      background: transparent;
+      opacity: .35;
+    }
+    .collapseDot.collapsed .inner{
+      opacity: .70;
     }
 
     .ctx{
@@ -283,7 +297,7 @@
 </head>
 <body>
 <div class="app">
-  <header>
+  <header id="topbar">
     <select id="projectSelect" title="Майндмэп"></select>
     <button class="btn primary" id="projNew">+ Новый</button>
     <button class="btn" id="projRename">Переименовать</button>
@@ -341,7 +355,7 @@
 
 <script>
 (() => {
-  const STORE_KEY = "mindmap_projects_v2";
+  const STORE_KEY = "mindmap_projects_v3";
 
   const PALETTE = [
     {name:"Sky",    fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.62)"},
@@ -354,6 +368,7 @@
   const ICONS = ["💡","✅","🎯","📌","🧠","⚡","🧩","🔥","📎","🔗","⭐","📝","📚","🧪","🐞","🧭"];
 
   const wrap = document.getElementById("wrap");
+  const topbar = document.getElementById("topbar");
   const scene = document.getElementById("scene");
   const world = document.getElementById("world");
   const linksSvg = document.getElementById("links");
@@ -378,7 +393,6 @@
   const measureCanvas = document.createElement("canvas");
   const mctx = measureCanvas.getContext("2d");
   const FONT = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
-
   function measureNode(text){
     mctx.font = FONT;
     const t = (text || "").trim() || "Идея";
@@ -390,18 +404,16 @@
     return {w,h};
   }
 
-  // ===== Storage =====
   let store = null;
   let active = null;
   let map = null;
 
-  // ===== UI state =====
   let tool = "select";
   let selectedId = null;
   let editingId = null;
 
   const DRAG_THRESHOLD = 6;
-  let drag = null; // {kind:'node'|'pan', nodeId?, pointerId, sx,sy, moved, baseX,baseY, startViewX,startViewY}
+  let drag = null;
 
   const pointers = new Map();
   let pinch = null;
@@ -422,7 +434,6 @@
     }catch(e){}
     return null;
   }
-
   function normalizeMapData(data){
     data.view ||= {x:24,y:24,k:1};
     data.nodes ||= [];
@@ -489,7 +500,7 @@
     map = normalizeMapData(JSON.parse(JSON.stringify(p.data)));
     selectedId = null;
     editingId = null;
-    drag = null; // IMPORTANT
+    drag = null;
     saveStore();
     rebuildProjectSelect();
     renderAll();
@@ -506,7 +517,6 @@
     autosave._t = setTimeout(() => commitMap(), 250);
   }
 
-  // ===== Map helpers =====
   function getNode(id){ return map.nodes.find(n => n.id === id); }
   function childrenOf(id){ return map.nodes.filter(n => n.parentId === id).map(n => n.id); }
 
@@ -528,7 +538,7 @@
   }
 
   function addNodeAt(x,y, text="Новая идея", icon="💡", style=PALETTE[0]){
-    drag = null; // IMPORTANT: never keep drag through creation
+    drag = null;
     const m = measureNode(text);
     const id = uid();
     map.nodes.push({
@@ -548,7 +558,7 @@
   function addChildFrom(parentId){
     const parent = getNode(parentId);
     if (!parent) return null;
-    drag = null; // IMPORTANT
+    drag = null;
 
     const idx = ((parent.childColorNext||0) + 1) % PALETTE.length;
     parent.childColorNext = (parent.childColorNext||0) + 1;
@@ -579,7 +589,7 @@
   function addSiblingFrom(nodeId){
     const n = getNode(nodeId);
     if (!n) return null;
-    drag = null; // IMPORTANT
+    drag = null;
 
     const parentId = n.parentId || null;
     const x = n.x;
@@ -628,7 +638,6 @@
     renderAll();
   }
 
-  // ===== View transform =====
   function applyTransform(){
     const v = map.view;
     world.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.k})`;
@@ -643,7 +652,6 @@
     };
   }
 
-  // ===== Links =====
   function edgePoint(fromNode, toNode){
     const cx = fromNode.x + fromNode.w/2;
     const cy = fromNode.y + fromNode.h/2;
@@ -686,7 +694,6 @@
     }
   }
 
-  // ===== Render nodes =====
   function renderSelectionOnly(){
     [...nodesLayer.querySelectorAll(".node")].forEach(el => {
       el.classList.toggle("selected", el.getAttribute("data-id") === selectedId);
@@ -721,27 +728,28 @@
       div.appendChild(text);
 
       div.addEventListener("pointerdown", (e) => {
-        e.preventDefault();
+        // when editing allow selection; don't steal pointer
         if (editingId) return;
 
+        e.preventDefault();
         selectedId = n.id;
         renderSelectionOnly();
         positionCtx();
 
         drag = {
           kind: "node",
-          nodeId: n.id,             // IMPORTANT: drag specific node, not selectedId
+          nodeId: n.id,
           pointerId: e.pointerId,
           sx: e.clientX, sy: e.clientY,
           moved: false,
           baseX: n.x, baseY: n.y
         };
-
         div.setPointerCapture(e.pointerId);
       });
 
       div.addEventListener("pointermove", (e) => {
         if (!drag || drag.kind !== "node" || drag.pointerId !== e.pointerId || drag.nodeId !== n.id) return;
+
         const dx = e.clientX - drag.sx;
         const dy = e.clientY - drag.sy;
         const dist = Math.hypot(dx, dy);
@@ -760,7 +768,7 @@
         const dot = nodesLayer.querySelector(`.collapseDot[data-dot-for="${CSS.escape(node.id)}"]`);
         if (dot){
           dot.style.left = (node.x + node.w + 10) + "px";
-          dot.style.top  = (node.y + node.h/2 - 11) + "px";
+          dot.style.top  = (node.y + node.h/2 - 9) + "px";
         }
 
         drawLinks();
@@ -773,30 +781,26 @@
           drag = null;
         }
       }
+
       div.addEventListener("pointerup", (e) => {
-        // IMPORTANT: DO NOT stopPropagation here (we need pointerup to be sane globally too)
-        if (!editingId){
-          // click/tap logic only if not moved
-          const moved = !!(drag && drag.kind === "node" && drag.pointerId === e.pointerId && drag.moved);
-          endNodeDrag(e);
-          if (moved) return;
+        const moved = !!(drag && drag.kind === "node" && drag.pointerId === e.pointerId && drag.moved);
+        endNodeDrag(e);
+        if (editingId) return;
+        if (moved) return;
 
-          const now = Date.now();
-          const same = (tap.id === n.id) && (now - tap.t <= TAP_WINDOW);
-          tap.id = n.id;
-          tap.t = now;
-          tap.count = same ? (tap.count + 1) : 1;
+        const now = Date.now();
+        const same = (tap.id === n.id) && (now - tap.t <= TAP_WINDOW);
+        tap.id = n.id;
+        tap.t = now;
+        tap.count = same ? (tap.count + 1) : 1;
 
-          if (tap.timer) clearTimeout(tap.timer);
-          tap.timer = setTimeout(() => {
-            if (tap.id !== n.id) return;
-            if (tap.count === 2) addChildFrom(n.id);
-            else if (tap.count >= 3) beginEdit(n.id);
-            tap.id = null; tap.count = 0; tap.timer = null;
-          }, TAP_WINDOW + 30);
-        } else {
-          endNodeDrag(e);
-        }
+        if (tap.timer) clearTimeout(tap.timer);
+        tap.timer = setTimeout(() => {
+          if (tap.id !== n.id) return;
+          if (tap.count === 2) addChildFrom(n.id);
+          else if (tap.count >= 3) beginEdit(n.id, true); // true = select all on enter
+          tap.id = null; tap.count = 0; tap.timer = null;
+        }, TAP_WINDOW + 30);
       });
 
       div.addEventListener("pointercancel", endNodeDrag);
@@ -807,11 +811,19 @@
       const kids = childrenOf(n.id);
       if (kids.length){
         const dot = document.createElement("div");
-        dot.className = "collapseDot";
+        dot.className = "collapseDot" + (n.collapsed ? " collapsed" : "");
         dot.setAttribute("data-dot-for", n.id);
         dot.style.left = (n.x + n.w + 10) + "px";
-        dot.style.top  = (n.y + n.h/2 - 11) + "px";
-        dot.textContent = n.collapsed ? "+" : "–";
+        dot.style.top  = (n.y + n.h/2 - 9) + "px";
+
+        // dot color from node stroke (fallback)
+        const stroke = (n.style && n.style.stroke) ? n.style.stroke : "rgba(11,19,36,.22)";
+        dot.style.borderColor = stroke;
+
+        const inner = document.createElement("div");
+        inner.className = "inner";
+        inner.style.background = stroke;          // filled uses opacity rules in CSS
+        dot.appendChild(inner);
 
         dot.addEventListener("pointerdown", (e) => {
           e.preventDefault();
@@ -830,7 +842,7 @@
     positionCtx();
   }
 
-  // ===== Context toolbar =====
+  // ===== Context toolbar position: close to node, flip if needed =====
   function positionCtx(){
     if (!selectedId) { ctx.style.display = "none"; return; }
     const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(selectedId)}"]`);
@@ -838,19 +850,35 @@
     if (!nodeEl || !n || isHiddenByCollapse(selectedId)) { ctx.style.display = "none"; return; }
 
     const rect = nodeEl.getBoundingClientRect();
-    const left = rect.left + rect.width/2 - 180;
-    const top  = rect.bottom + 6; // close
+    const ctxW = 360;
+    const ctxH = 52;
+    const gap = 3;
+
+    const headerRect = topbar.getBoundingClientRect();
+    const safeTop = headerRect.bottom + 6;
+
+    // Prefer below
+    let top = rect.bottom + gap;
+    // If it doesn't fit below, place above
+    if (top + ctxH > window.innerHeight - 8){
+      top = rect.top - ctxH - gap;
+    }
+    // Clamp not under header
+    top = Math.max(safeTop, top);
+
+    let left = rect.left + rect.width/2 - ctxW/2;
+    left = Math.max(12, Math.min(window.innerWidth - ctxW - 12, left));
 
     ctx.style.display = "flex";
-    ctx.style.left = Math.max(12, Math.min(window.innerWidth - 380, left)) + "px";
-    ctx.style.top  = Math.max(76, Math.min(window.innerHeight - 60, top)) + "px";
+    ctx.style.left = left + "px";
+    ctx.style.top  = top + "px";
 
     document.getElementById("ctxCollapse").style.opacity = childrenOf(selectedId).length ? "1" : ".45";
   }
 
   document.getElementById("ctxChild").onclick = () => { if (selectedId) addChildFrom(selectedId); };
   document.getElementById("ctxSibling").onclick = () => { if (selectedId) addSiblingFrom(selectedId); };
-  document.getElementById("ctxRename").onclick = () => { if (selectedId) beginEdit(selectedId); };
+  document.getElementById("ctxRename").onclick = () => { if (selectedId) beginEdit(selectedId, true); };
   document.getElementById("ctxColor").onclick = () => {
     const n = getNode(selectedId); if (!n) return;
     const i = PALETTE.findIndex(p => p.fill === n.style.fill && p.stroke === n.style.stroke);
@@ -868,8 +896,16 @@
   document.getElementById("ctxDelete").onclick = () => { if (selectedId) deleteSubtree(selectedId); };
   document.getElementById("ctxClose").onclick = () => { selectedId = null; renderSelectionOnly(); positionCtx(); };
 
-  // ===== Inline edit =====
-  function beginEdit(id){
+  // ===== Inline edit with proper selection =====
+  function selectAllIn(el){
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function beginEdit(id, selectAll=false){
     if (editingId) return;
     const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(id)}"]`);
     const n = getNode(id);
@@ -877,6 +913,8 @@
 
     drag = null;
     editingId = id;
+
+    scene.classList.add("allowSelect"); // IMPORTANT: let mouse selection work
     nodeEl.classList.add("editing");
 
     const textEl = nodeEl.querySelector(".text");
@@ -884,12 +922,17 @@
     textEl.textContent = n.text || "";
     textEl.focus();
 
-    const range = document.createRange();
-    range.selectNodeContents(textEl);
-    range.collapse(false);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
+    // either select all or put caret to end
+    if (selectAll){
+      selectAllIn(textEl);
+    } else {
+      const range = document.createRange();
+      range.selectNodeContents(textEl);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
 
     const finish = (saveChanges) => {
       textEl.removeEventListener("keydown", onKey);
@@ -908,14 +951,23 @@
       nodeEl.classList.remove("editing");
       editingId = null;
 
+      scene.classList.remove("allowSelect"); // restore
       autosave();
       renderAll();
     };
 
     const onKey = (e) => {
+      // Ctrl/Cmd + A inside editor
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a"){
+        e.preventDefault();
+        selectAllIn(textEl);
+        return;
+      }
       if (e.key === "Enter"){ e.preventDefault(); textEl.blur(); }
       if (e.key === "Escape"){ e.preventDefault(); finish(false); }
+      e.stopPropagation();
     };
+
     const onBlur = () => finish(true);
 
     textEl.addEventListener("keydown", onKey);
@@ -928,10 +980,9 @@
 
     const onNode = !!e.target.closest(".node") || !!e.target.closest(".collapseDot") || !!e.target.closest(".ctx");
     if (!onNode){
-      // finish editing if user clicks outside
       if (editingId){
-        const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(editingId)}"] .text`);
-        if (nodeEl) nodeEl.blur();
+        const editor = nodesLayer.querySelector(`.node[data-id="${CSS.escape(editingId)}"] .text`);
+        if (editor) editor.blur();
       }
 
       if (tool === "node"){
@@ -1042,7 +1093,7 @@
     addNodeAt(p.x - 90, p.y - 30, "Новая идея", "💡", PALETTE[0]);
   });
 
-  // ===== Tools =====
+  // Tools
   function setTool(t){
     tool = t;
     document.querySelectorAll(".toolbtn").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
@@ -1067,7 +1118,7 @@
     setTool("select");
   }
 
-  // ===== Header actions =====
+  // Header actions
   projectSelect.addEventListener("change", () => setActiveProject(projectSelect.value));
 
   document.getElementById("projNew").onclick = () => {
@@ -1158,7 +1209,7 @@
   document.getElementById("exportOne").onclick = () => {
     if (!active) return;
     commitMap();
-    const payload = { kind:"mindmap_project", version:2, project: store.projects[store.activeId] };
+    const payload = { kind:"mindmap_project", version:3, project: store.projects[store.activeId] };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1198,7 +1249,7 @@
 
   document.getElementById("exportAll").onclick = () => {
     commitMap();
-    const payload = { kind:"mindmap_store", version:2, store };
+    const payload = { kind:"mindmap_store", version:3, store };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1249,10 +1300,6 @@
     if (k === "n") setTool("node");
     if (k === "c") setTool("center");
 
-    if (e.ctrlKey && e.key === "/"){
-      e.preventDefault();
-      if (selectedId) toggleCollapse(selectedId);
-    }
     if (e.key === "Tab" && selectedId && !editingId){
       e.preventDefault(); addChildFrom(selectedId);
     }
