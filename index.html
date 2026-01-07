@@ -3,15 +3,15 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Mini MindMap (v4)</title>
+  <title>Mini MindMap (v5)</title>
   <meta name="theme-color" content="#f3f7ff" />
   <style>
     :root{
       --text:#0b1324;
       --muted:rgba(11,19,36,.60);
-      --panel:rgba(255,255,255,.75);
+      --panel:rgba(255,255,255,.78);
       --stroke:rgba(11,19,36,.12);
-      --shadow: 0 18px 60px rgba(10,20,40,.18);
+      --shadow: 0 18px 60px rgba(10,20,40,.16);
       --grid:rgba(10,20,40,.06);
       --nodeRadius:16px;
     }
@@ -33,7 +33,7 @@
     header{
       display:flex; gap:10px; align-items:center; padding:12px 14px;
       position:sticky; top:0; z-index:20;
-      background: rgba(255,255,255,.68);
+      background: rgba(255,255,255,.70);
       border-bottom:1px solid var(--stroke);
       backdrop-filter: blur(10px);
       flex-wrap:wrap;
@@ -88,13 +88,13 @@
       filter: drop-shadow(0 16px 26px rgba(10,20,40,.16));
       cursor: grab;
     }
-    .node.selected rect{
-      stroke: rgba(89,195,255,.95) !important;
-      stroke-width: 2.4 !important;
-    }
     .node rect{
       rx: var(--nodeRadius);
       ry: var(--nodeRadius);
+    }
+    .node.selected rect{
+      stroke: rgba(89,195,255,.95) !important;
+      stroke-width: 2.4 !important;
     }
 
     .toast{
@@ -124,7 +124,7 @@
   <header>
     <div class="brand">
       <b>Mini MindMap</b>
-      <span>Двойной клик по узлу — дочерний. Тройной клик по узлу — редактирование текста.</span>
+      <span>Двойной клик по узлу — дочерний. Тройной клик — редактирование текста внутри ячейки.</span>
     </div>
 
     <button class="btn primary" id="addRoot">+ Центр</button>
@@ -155,8 +155,8 @@
 
 <script>
 (() => {
-  const STORAGE_KEY = "mini_mindmap_v4";
-  const MIGRATE_KEYS = ["mini_mindmap_v3", "mini_mindmap_v2", "mini_mindmap_v1"];
+  const STORAGE_KEY = "mini_mindmap_v5";
+  const MIGRATE_KEYS = ["mini_mindmap_v4","mini_mindmap_v3","mini_mindmap_v2","mini_mindmap_v1"];
 
   const svg = document.getElementById("svg");
   const wrap = document.getElementById("wrap");
@@ -180,16 +180,19 @@
   let selectedNodeId = null;
   let selectedLinkId = null;
 
-  // pointer interactions
-  let drag = null; // {type:'node'|'pan', sx,sy, base:[{id,x,y}] or ox,oy}
+  // drag + gestures
+  let drag = null; // {type:'node'|'pan', pointerId, sx,sy, moved, base:{x,y} or ox,oy}
   const pointers = new Map(); // pointerId -> {x,y}
-  let pinch = null; // {dist0, k0, mid0:{x,y}, view0:{x,y}}
+  let pinch = null; // {dist0,k0}
+  const DRAG_THRESHOLD = 6;
+
+  // edit state
+  let editingNodeId = null;
+
+  // double vs triple click resolution
+  const pendingDouble = new Map(); // nodeId -> timerId
 
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
-
-  // click counting per node for double/triple
-  const clickState = new Map(); // nodeId -> {count, t}
-  const CLICK_WINDOW_MS = 420;
 
   function showToast(msg){
     toast.textContent = msg;
@@ -217,11 +220,26 @@
   }
   function fitDefault(){ setView(24,24,1); }
 
+  // ---------- text measurement (real width) ----------
+  const measurer = document.createElement("canvas");
+  const mctx = measurer.getContext("2d");
+
   function measureNode(text){
-    const baseW = 190;
-    const maxW  = 340;
-    const approx = Math.min(maxW, Math.max(baseW, (text||"").length * 7.0 + 70));
-    return {w: approx, h: 58};
+    const font = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
+    mctx.font = font;
+
+    const t = (text || "").trim() || "Идея";
+    // icon(20) + gap(10) + padding L/R(24) + small safety(18)
+    const iconBlock = 20 + 10;
+    const padding = 24;
+    const safety = 18;
+
+    const raw = mctx.measureText(t).width;
+    const minW = 150;
+    const maxW = 360;
+    const w = Math.max(minW, Math.min(maxW, Math.ceil(raw + iconBlock + padding + safety)));
+    const h = 58;
+    return {w,h};
   }
 
   function addNode(x, y, text="Новая идея", icon="💡", style=PALETTE[0]){
@@ -248,7 +266,7 @@
     save(); render();
   }
 
-  // выход линии с края прямоугольника
+  // line endpoints from edge, not center
   function edgePoint(fromNode, toNode){
     const cx = fromNode.x + fromNode.w/2;
     const cy = fromNode.y + fromNode.h/2;
@@ -265,75 +283,14 @@
     return { x: cx + dx * t, y: cy + dy * t };
   }
 
-  // inline rename inside the node
-  function beginInlineEdit(nodeId, textDiv){
-    const n = getNode(nodeId);
-    if (!n || !textDiv) return;
-
-    // already editing?
-    if (textDiv.isContentEditable) return;
-
-    textDiv.contentEditable = "true";
-    textDiv.style.outline = "none";
-    textDiv.style.cursor = "text";
-    textDiv.style.userSelect = "text";
-    textDiv.focus();
-
-    // put caret at end
-    const range = document.createRange();
-    range.selectNodeContents(textDiv);
-    range.collapse(false);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-
-    const finish = (saveChanges) => {
-      textDiv.contentEditable = "false";
-      textDiv.style.cursor = "";
-      textDiv.style.userSelect = "none";
-
-      if (saveChanges){
-        const val = (textDiv.textContent || "").trim();
-        n.text = val || "Идея";
-        const {w,h} = measureNode(n.text);
-        n.w = w; n.h = h;
-        save(); render();
-      } else {
-        textDiv.textContent = n.text || "Идея";
-      }
-    };
-
-    const onKey = (e) => {
-      if (e.key === "Enter"){
-        e.preventDefault();
-        textDiv.blur();
-      }
-      if (e.key === "Escape"){
-        e.preventDefault();
-        finish(false);
-        textDiv.blur();
-      }
-    };
-
-    const onBlur = () => {
-      textDiv.removeEventListener("keydown", onKey);
-      textDiv.removeEventListener("blur", onBlur);
-      finish(true);
-    };
-
-    textDiv.addEventListener("keydown", onKey);
-    textDiv.addEventListener("blur", onBlur);
-  }
-
   function addChildFrom(parentId){
     const parent = getNode(parentId);
     if (!parent) return null;
 
-    // каждый новый ребёнок — следующий цвет по палитре
     const idx = ((parent.childColorNext || 0) + 1) % PALETTE.length;
     parent.childColorNext = (parent.childColorNext || 0) + 1;
-
     const style = PALETTE[idx];
+
     const x = parent.x + parent.w + 140;
     const y = parent.y + (Math.random()*70 - 35);
 
@@ -342,14 +299,91 @@
     return childId;
   }
 
-  // -------- SVG helpers
+  // ---------- inline edit ----------
+  function stopInlineEdit(saveChanges){
+    if (!editingNodeId) return;
+    const n = getNode(editingNodeId);
+    if (!n){ editingNodeId = null; return; }
+
+    // after render, textDiv disappears; we save on blur events before render,
+    // but this is a safety for ESC path.
+    editingNodeId = null;
+  }
+
+  function beginInlineEdit(nodeId, textDiv){
+    const n = getNode(nodeId);
+    if (!n || !textDiv) return;
+
+    // cancel pending double
+    const t = pendingDouble.get(nodeId);
+    if (t){ clearTimeout(t); pendingDouble.delete(nodeId); }
+
+    editingNodeId = nodeId;
+
+    textDiv.contentEditable = "true";
+    textDiv.style.cursor = "text";
+    textDiv.style.userSelect = "text";
+    textDiv.style.webkitUserSelect = "text";
+    textDiv.style.outline = "none";
+    textDiv.style.pointerEvents = "auto";
+
+    textDiv.focus();
+
+    // caret end
+    const range = document.createRange();
+    range.selectNodeContents(textDiv);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    const finish = (save) => {
+      textDiv.removeEventListener("keydown", onKey);
+      textDiv.removeEventListener("blur", onBlur);
+
+      if (save){
+        const val = (textDiv.textContent || "").trim();
+        n.text = val || "Идея";
+        const {w,h} = measureNode(n.text);
+        n.w = w; n.h = h;
+      } else {
+        textDiv.textContent = n.text || "Идея";
+      }
+
+      textDiv.contentEditable = "false";
+      textDiv.style.cursor = "default";
+      textDiv.style.userSelect = "none";
+      textDiv.style.webkitUserSelect = "none";
+
+      editingNodeId = null;
+      save(); render();
+    };
+
+    const onKey = (e) => {
+      if (e.key === "Enter"){
+        e.preventDefault();
+        textDiv.blur();
+      } else if (e.key === "Escape"){
+        e.preventDefault();
+        finish(false);
+      }
+      e.stopPropagation();
+    };
+
+    const onBlur = () => finish(true);
+
+    textDiv.addEventListener("keydown", onKey);
+    textDiv.addEventListener("blur", onBlur);
+  }
+
+  // ---------- SVG element helpers ----------
   function el(name, attrs={}){
     const x = document.createElementNS("http://www.w3.org/2000/svg", name);
     for (const [k,v] of Object.entries(attrs)) x.setAttribute(k, String(v));
     return x;
   }
 
-  // -------- render
+  // ---------- render ----------
   function render(){
     while(svg.firstChild) svg.removeChild(svg.firstChild);
 
@@ -376,6 +410,7 @@
       });
       path.addEventListener("pointerdown", (e) => {
         e.stopPropagation();
+        if (editingNodeId) return;
         selectedLinkId = l.id;
         selectedNodeId = null;
         render();
@@ -399,7 +434,6 @@
       });
       gn.appendChild(rect);
 
-      // HTML inside node (fixed emoji clipping)
       const fo = el("foreignObject", { x: 0, y: 0, width: n.w, height: n.h });
       const div = document.createElement("div");
       div.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
@@ -416,9 +450,10 @@
       const icon = document.createElement("div");
       icon.style.cssText = `
         flex:0 0 auto;
+        width:20px;
+        height:20px;
         font-size:18px;
         line-height: 1;
-        height: 20px;
         display:flex;
         align-items:center;
         justify-content:center;
@@ -437,6 +472,7 @@
         line-height: 1.15;
         padding-bottom: 2px;
         cursor: default;
+        pointer-events: auto;
       `;
       text.textContent = n.text || "";
 
@@ -445,86 +481,86 @@
       fo.appendChild(div);
       gn.appendChild(fo);
 
-      // selection + drag
+      // pointerdown: select + maybe start drag later (threshold)
       gn.addEventListener("pointerdown", (e) => {
         e.stopPropagation();
+        if (editingNodeId) return;
 
-        // select
         selectedNodeId = n.id;
         selectedLinkId = null;
         render();
 
-        // drag node
         drag = {
           type: "node",
+          pointerId: e.pointerId,
           sx: e.clientX, sy: e.clientY,
-          base: [{id:n.id, x:n.x, y:n.y}]
+          moved: false,
+          base: {x: n.x, y: n.y}
         };
         svg.setPointerCapture(e.pointerId);
       });
 
-      // Custom click counter: double -> add child, triple -> inline rename
-      gn.addEventListener("pointerup", (e) => {
+      // click: reliable click counting (detail=1/2/3)
+      gn.addEventListener("click", (e) => {
         e.stopPropagation();
-        const now = Date.now();
-        const prev = clickState.get(n.id) || {count:0, t:0};
-        const within = (now - prev.t) <= CLICK_WINDOW_MS;
+        if (editingNodeId) return;
+        // ignore clicks right after drag
+        if (drag && drag.type === "node" && drag.moved) return;
 
-        const nextCount = within ? (prev.count + 1) : 1;
-        clickState.set(n.id, {count: nextCount, t: now});
+        if (e.detail === 2){
+          // schedule child; if a 3rd click comes quickly, we cancel and rename instead
+          const prev = pendingDouble.get(n.id);
+          if (prev) clearTimeout(prev);
 
-        clearTimeout(prev._timer);
-        const timer = setTimeout(() => {
-          const st = clickState.get(n.id);
-          if (!st) return;
-
-          if (st.count === 2){
+          const tid = setTimeout(() => {
+            pendingDouble.delete(n.id);
             const childId = addChildFrom(n.id);
-            // чуть подсветить
             selectedNodeId = childId;
             selectedLinkId = null;
             render();
-          }
-          if (st.count >= 3){
-            // inline edit in place
-            beginInlineEdit(n.id, text);
-          }
+          }, 240);
 
-          clickState.delete(n.id);
-        }, CLICK_WINDOW_MS + 40);
-
-        // store timer
-        const cur = clickState.get(n.id);
-        if (cur) cur._timer = timer;
+          pendingDouble.set(n.id, tid);
+        } else if (e.detail >= 3){
+          const prev = pendingDouble.get(n.id);
+          if (prev){ clearTimeout(prev); pendingDouble.delete(n.id); }
+          beginInlineEdit(n.id, text);
+        }
       });
 
       gView.appendChild(gn);
     });
   }
 
-  // -------- background pan (drag empty space)
+  // ---------- background pan + pinch ----------
   svg.addEventListener("pointerdown", (e) => {
-    // if clicked on empty, start panning
+    pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+
+    if (pointers.size === 2){
+      const pts = [...pointers.values()];
+      const dx = pts[1].x - pts[0].x;
+      const dy = pts[1].y - pts[0].y;
+      pinch = { dist0: Math.hypot(dx,dy), k0: state.view.k };
+      return;
+    }
+
+    // if empty area: start pan
     const nodeId = findNodeFromEvent(e);
     const linkId = findLinkFromEvent(e);
     if (!nodeId && !linkId){
+      if (editingNodeId) stopInlineEdit(true);
       selectedNodeId = null;
       selectedLinkId = null;
       render();
 
-      drag = { type:"pan", sx:e.clientX, sy:e.clientY, ox:state.view.x, oy:state.view.y };
+      drag = {
+        type:"pan",
+        pointerId: e.pointerId,
+        sx:e.clientX, sy:e.clientY,
+        moved:false,
+        ox: state.view.x, oy: state.view.y
+      };
       svg.setPointerCapture(e.pointerId);
-    }
-
-    pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
-    if (pointers.size === 2){
-      // start pinch
-      const pts = [...pointers.values()];
-      const dx = pts[1].x - pts[0].x;
-      const dy = pts[1].y - pts[0].y;
-      const dist = Math.hypot(dx, dy);
-      const mid = {x: (pts[0].x+pts[1].x)/2, y:(pts[0].y+pts[1].y)/2};
-      pinch = { dist0: dist, k0: state.view.k, mid0: mid, view0:{x:state.view.x, y:state.view.y} };
     }
   });
 
@@ -533,17 +569,16 @@
       pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
     }
 
-    // pinch zoom
+    // pinch
     if (pointers.size === 2 && pinch){
       const pts = [...pointers.values()];
       const dx = pts[1].x - pts[0].x;
       const dy = pts[1].y - pts[0].y;
-      const dist = Math.hypot(dx, dy);
+      const dist = Math.hypot(dx,dy);
       const scale = dist / Math.max(1, pinch.dist0);
       const nk = Math.max(0.25, Math.min(3.2, pinch.k0 * scale));
 
-      // zoom around midpoint
-      const mid = {x: (pts[0].x+pts[1].x)/2, y:(pts[0].y+pts[1].y)/2};
+      const mid = {x:(pts[0].x+pts[1].x)/2, y:(pts[0].y+pts[1].y)/2};
       const before = clientToWorld(mid.x, mid.y);
 
       state.view.k = nk;
@@ -557,26 +592,29 @@
       return;
     }
 
-    if (!drag) return;
+    if (!drag || drag.pointerId !== e.pointerId) return;
+
+    const dxClient = e.clientX - drag.sx;
+    const dyClient = e.clientY - drag.sy;
+    const dist = Math.hypot(dxClient, dyClient);
+
+    if (!drag.moved && dist > DRAG_THRESHOLD){
+      drag.moved = true;
+    }
+    if (!drag.moved) return;
 
     if (drag.type === "node"){
-      const dx = (e.clientX - drag.sx) / state.view.k;
-      const dy = (e.clientY - drag.sy) / state.view.k;
-      const b = drag.base[0];
-      const n = getNode(b.id);
-      if (n){
-        n.x = b.x + dx;
-        n.y = b.y + dy;
-        render();
-      }
+      const n = getNode(selectedNodeId);
+      if (!n) return;
+      n.x = drag.base.x + dxClient / state.view.k;
+      n.y = drag.base.y + dyClient / state.view.k;
+      render();
       return;
     }
 
     if (drag.type === "pan"){
-      const dx = (e.clientX - drag.sx);
-      const dy = (e.clientY - drag.sy);
-      state.view.x = drag.ox + dx;
-      state.view.y = drag.oy + dy;
+      state.view.x = drag.ox + dxClient;
+      state.view.y = drag.oy + dyClient;
       render();
       return;
     }
@@ -586,12 +624,14 @@
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = null;
 
-    if (drag){
+    if (drag && drag.pointerId === e.pointerId){
+      const moved = drag.moved;
       drag = null;
-      save();
+      if (moved) save();
       render();
     }
   });
+
   svg.addEventListener("pointercancel", (e) => {
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = null;
@@ -618,13 +658,12 @@
     render(); save();
   }, {passive:false});
 
-  // dblclick empty => new node
+  // dblclick empty => new node (для ПК)
   svg.addEventListener("dblclick", (e) => {
-    // если кликнули по узлу — он сам обрабатывает через счётчик кликов
     const nodeId = findNodeFromEvent(e);
     if (nodeId) return;
     const p = clientToWorld(e.clientX, e.clientY);
-    addNode(p.x - 95, p.y - 29, "Новая идея", "💡", PALETTE[0]);
+    addNode(p.x - 90, p.y - 29, "Новая идея", "💡", PALETTE[0]);
   });
 
   function findNodeFromEvent(e){
@@ -646,7 +685,7 @@
     return null;
   }
 
-  // -------- delete / export / import / layout
+  // ---------- storage ----------
   function save(){
     try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
   }
@@ -659,7 +698,6 @@
         if (obj && Array.isArray(obj.nodes) && Array.isArray(obj.links)){
           state = obj;
           state.view ||= {x:24,y:24,k:1};
-          // normalize
           state.nodes.forEach(n => {
             n.text ||= "Идея";
             const {w,h} = measureNode(n.text);
@@ -672,7 +710,6 @@
         }
       }
 
-      // migrate
       for (const k of MIGRATE_KEYS){
         const oldRaw = localStorage.getItem(k);
         if (!oldRaw) continue;
@@ -686,8 +723,7 @@
             id: n.id || uid(),
             x: Number(n.x)||0,
             y: Number(n.y)||0,
-            w: n.w || w,
-            h: n.h || h,
+            w, h,
             text,
             icon: (typeof n.icon === "string") ? n.icon : "💡",
             style: n.style ? n.style : {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke},
@@ -706,6 +742,7 @@
     }
   }
 
+  // ---------- actions ----------
   function deleteSelected(){
     if (selectedNodeId){
       const id = selectedNodeId;
@@ -747,7 +784,7 @@
         obj.nodes.forEach(n => {
           n.text ||= "Идея";
           const {w,h} = measureNode(n.text);
-          n.w ||= w; n.h ||= h;
+          n.w = w; n.h = h; // пересчёт по новому движку
           n.icon = (typeof n.icon === "string") ? n.icon : "💡";
           if (!n.style) n.style = {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke};
           n.childColorNext = n.childColorNext || 0;
@@ -820,7 +857,7 @@
     showToast("Авто-раскладка готова");
   }
 
-  // -------- buttons
+  // ---------- UI buttons ----------
   document.getElementById("addRoot").addEventListener("click", () => {
     if (state.nodes.length === 0){
       addNode(260, 180, "Центральная идея", "🎯", PALETTE[0]);
@@ -828,7 +865,7 @@
     } else {
       const r = svg.getBoundingClientRect();
       const p = clientToWorld(r.left + r.width/2, r.top + r.height/2);
-      addNode(p.x - 95, p.y - 29, "Новая идея", "💡", PALETTE[0]);
+      addNode(p.x - 90, p.y - 29, "Новая идея", "💡", PALETTE[0]);
     }
   });
 
