@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>MindMap Pro Lite (v8)</title>
+  <title>MindMap Pro Lite (Projects)</title>
   <meta name="theme-color" content="#f3f7ff" />
   <style>
     :root{
@@ -16,7 +16,10 @@
       --tool:rgba(20,28,40,.88);
       --toolText:rgba(255,255,255,.92);
       --toolStroke:rgba(255,255,255,.10);
+      --glass: rgba(255,255,255,.72);
+      --glass2: rgba(255,255,255,.82);
     }
+
     *{ box-sizing:border-box; }
     html,body{
       height:100%;
@@ -30,56 +33,71 @@
         linear-gradient(180deg, #f7fbff, #eef4ff 55%, #f8fbff);
       overflow:hidden;
     }
+
     .app{ height:100%; display:flex; flex-direction:column; }
+
     header{
       display:flex; gap:10px; align-items:center; padding:12px 14px;
-      position:sticky; top:0; z-index:30;
-      background: rgba(255,255,255,.72);
+      position:sticky; top:0; z-index:100;
+      background: var(--glass);
       border-bottom:1px solid var(--stroke);
       backdrop-filter: blur(10px);
       flex-wrap:wrap;
     }
-    .brand{ display:flex; flex-direction:column; gap:2px; margin-right:8px; }
+
+    .brand{
+      display:flex; flex-direction:column; gap:2px; margin-right:6px;
+      min-width: 240px;
+    }
     .brand b{ font-size:14px; letter-spacing:.2px; }
     .brand span{ color:var(--muted); font-size:12px; }
 
-    .btn{
-      appearance:none; border:1px solid var(--stroke); background:rgba(255,255,255,.65);
-      color:var(--text); padding:9px 10px; border-radius:12px;
+    .btn, select, input[type="text"]{
+      appearance:none;
+      border:1px solid var(--stroke);
+      background:rgba(255,255,255,.70);
+      color:var(--text);
+      padding:9px 10px;
+      border-radius:12px;
       box-shadow: 0 8px 22px rgba(0,0,0,.06);
-      cursor:pointer; user-select:none;
-      display:inline-flex; align-items:center; gap:8px;
+      cursor:pointer;
+      user-select:none;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      font: inherit;
+      height: 38px;
     }
-    .btn:hover{ border-color: rgba(89,195,255,.45); }
+    select{ cursor:pointer; }
+    .btn:hover, select:hover{ border-color: rgba(89,195,255,.45); }
     .btn:active{ transform: translateY(1px); }
     .btn.primary{ border-color: rgba(89,195,255,.55); }
     .btn.danger{ border-color: rgba(255,92,122,.55); }
     .sep{ width:1px; height:26px; background:var(--stroke); margin:0 2px; }
 
-    .stageWrap{ flex:1; position:relative; overflow:hidden; }
+    .stageWrap{
+      flex:1;
+      position:relative;
+      overflow:hidden;
+    }
     .stageWrap::before{
-      content:""; position:absolute; inset:0;
+      content:"";
+      position:absolute; inset:0;
       background:
         radial-gradient(circle at 0 0, var(--grid) 1px, transparent 1px),
         radial-gradient(circle at 0 0, var(--grid) 1px, transparent 1px);
       background-size: 42px 42px, 7px 7px;
       opacity:.75;
       pointer-events:none;
+      z-index:0;
     }
 
-    svg{
-      position:absolute; inset:0;
-      width:100%; height:100%;
-      display:block;
-      touch-action:none;
-      z-index:1;
-    }
-
+    /* Left toolbar */
     .leftbar{
       position:absolute;
       left:14px; top:14px;
-      z-index:25;
-      background: rgba(255,255,255,.82);
+      z-index:80;
+      background: var(--glass2);
       border:1px solid var(--stroke);
       border-radius:18px;
       box-shadow: var(--shadow);
@@ -120,13 +138,124 @@
       opacity:0;
       pointer-events:none;
       transition: .12s ease;
-      z-index:60;
+      z-index:120;
     }
     .toolbtn:hover .toolhint{ opacity:1; }
 
+    /* Scene */
+    #scene{
+      position:absolute;
+      inset:0;
+      z-index:1;
+      touch-action:none; /* we handle pan/zoom ourselves */
+      user-select:none;
+    }
+
+    /* Transform wrapper (panned/zoomed world) */
+    #world{
+      position:absolute;
+      left:0; top:0;
+      transform-origin: 0 0;
+      will-change: transform;
+    }
+
+    /* Links under nodes */
+    #links{
+      position:absolute;
+      left:0; top:0;
+      overflow:visible;
+      pointer-events:none;
+    }
+    .link{
+      stroke: rgba(30,90,150,.40);
+      stroke-width: 2.2;
+      fill: none;
+    }
+
+    /* Nodes layer */
+    #nodes{
+      position:absolute;
+      left:0; top:0;
+    }
+
+    .node{
+      position:absolute;
+      border-radius: 16px;
+      padding: 10px 12px;
+      height: 58px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      box-shadow: 0 16px 26px rgba(10,20,40,.14);
+      border: 1.2px solid rgba(11,19,36,.18);
+      background: rgba(255,255,255,.80);
+      cursor: grab;
+      user-select:none;
+      -webkit-user-select:none;
+      min-width: 150px;
+      max-width: 360px;
+    }
+    .node.selected{
+      border-color: rgba(89,195,255,.95);
+      box-shadow: 0 16px 26px rgba(10,20,40,.14), 0 0 0 3px rgba(89,195,255,.18) inset;
+    }
+    .node:active{ cursor: grabbing; }
+
+    .node .icon{
+      width:20px; height:20px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:18px; line-height:1;
+      flex:0 0 auto;
+    }
+
+    .node .text{
+      flex:1 1 auto;
+      line-height:1.15;
+      overflow:hidden;
+      display:-webkit-box;
+      -webkit-line-clamp:2;
+      -webkit-box-orient:vertical;
+      word-break: break-word;
+      cursor: default;
+    }
+
+    .node.editing{
+      cursor: text;
+      user-select:text;
+      -webkit-user-select:text;
+    }
+    .node.editing .text{
+      outline: none;
+      cursor: text;
+      user-select:text;
+      -webkit-user-select:text;
+      -webkit-line-clamp: unset;
+      display:block;
+      overflow: visible;
+      white-space: pre-wrap;
+    }
+
+    /* Collapse dot */
+    .collapseDot{
+      position:absolute;
+      width: 22px; height: 22px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.92);
+      border:1px solid rgba(11,19,36,.16);
+      box-shadow: 0 10px 18px rgba(10,20,40,.18);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size: 16px;
+      cursor: pointer;
+      user-select:none;
+      -webkit-user-select:none;
+    }
+
+    /* Context toolbar */
     .ctx{
       position:absolute;
-      z-index:50;
+      z-index:90;
       background: var(--tool);
       color: var(--toolText);
       border:1px solid var(--toolStroke);
@@ -138,6 +267,7 @@
       align-items:center;
       backdrop-filter: blur(10px);
       user-select:none;
+      -webkit-user-select:none;
     }
     .ctx .cbtn{
       width:34px; height:34px;
@@ -150,32 +280,7 @@
     }
     .ctx .cbtn:hover{ border-color: rgba(89,195,255,.50); }
     .ctx .csep{ width:1px; height:22px; background: rgba(255,255,255,.12); margin:0 2px; }
-    .ctx .label{
-      font-size:12px;
-      color: rgba(255,255,255,.70);
-      padding:0 6px 0 2px;
-    }
-
-    .link{
-      stroke: rgba(30,90,150,.40);
-      stroke-width: 2.2;
-      fill: none;
-    }
-
-    .node{
-      filter: drop-shadow(0 16px 26px rgba(10,20,40,.14));
-      cursor: grab;
-    }
-    .node.selected rect{
-      stroke: rgba(89,195,255,.95) !important;
-      stroke-width: 2.6 !important;
-    }
-    .node rect{ rx: var(--radius); ry: var(--radius); }
-
-    .toggleDot{
-      filter: drop-shadow(0 10px 18px rgba(10,20,40,.18));
-      cursor:pointer;
-    }
+    .ctx .label{ font-size:12px; color: rgba(255,255,255,.70); padding:0 6px 0 2px; }
 
     .toast{
       position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
@@ -188,13 +293,15 @@
       opacity:0; pointer-events:none;
       transition: opacity .18s ease;
       max-width:min(720px, calc(100% - 24px));
-      z-index:40;
+      z-index:110;
     }
     .toast.show{ opacity:1; }
 
     input[type="file"]{ display:none; }
-    @media (max-width: 560px){
+
+    @media (max-width: 720px){
       .brand span{ display:none; }
+      .brand{ min-width: 140px; }
     }
   </style>
 </head>
@@ -203,20 +310,29 @@
   <header>
     <div class="brand">
       <b>MindMap Pro Lite</b>
-      <span>Двойной клик по узлу — дочерний • Тройной клик — редактирование • Ctrl+/ — свернуть/развернуть</span>
+      <span>Двойной клик по узлу — дочерний • Тройной — редактирование • Колесо — зум • Перетаскивание фона — пан</span>
     </div>
 
-    <button class="btn primary" id="addRoot">+ Центр</button>
+    <select id="projectSelect" title="Майндмэп"></select>
+    <button class="btn primary" id="projNew">+ Новый</button>
+    <button class="btn" id="projRename">Переименовать</button>
+    <button class="btn" id="projDup">Дублировать</button>
+    <button class="btn danger" id="projDel">Удалить</button>
+
+    <div class="sep"></div>
+
     <button class="btn" id="autoLayout">Авто-раскладка</button>
     <button class="btn" id="resetView">Сброс вида</button>
 
     <div class="sep"></div>
 
-    <button class="btn" id="export">Экспорт</button>
-    <label class="btn" for="importFile">Импорт</label>
-    <input id="importFile" type="file" accept="application/json" />
+    <button class="btn" id="exportOne">Экспорт карты</button>
+    <label class="btn" for="importOne">Импорт карты</label>
+    <input id="importOne" type="file" accept="application/json" />
 
-    <button class="btn danger" id="clearAll">Очистить</button>
+    <button class="btn" id="exportAll">Экспорт всех</button>
+    <label class="btn" for="importAll">Импорт всех</label>
+    <input id="importAll" type="file" accept="application/json" />
   </header>
 
   <div class="stageWrap" id="wrap">
@@ -224,8 +340,6 @@
       <div class="toolbtn active" data-tool="select"><span>🖱️</span><div class="toolhint">Select (V)</div></div>
       <div class="toolbtn" data-tool="hand"><span>✋</span><div class="toolhint">Hand/Pan (H)</div></div>
       <div class="toolbtn" data-tool="node"><span>➕</span><div class="toolhint">Add node (N) — клик по полю</div></div>
-      <div class="toolbtn" data-tool="sticky"><span>🗒️</span><div class="toolhint">Sticky (S) — клик по полю</div></div>
-      <div class="toolbtn" data-tool="text"><span>🔤</span><div class="toolhint">Text label (T) — клик по полю</div></div>
       <div class="toolbtn" data-tool="center"><span>🎯</span><div class="toolhint">Center on selection (C)</div></div>
     </div>
 
@@ -243,20 +357,21 @@
       <div class="cbtn" id="ctxClose" title="Закрыть">✖</div>
     </div>
 
-    <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div id="scene">
+      <div id="world">
+        <svg id="links" xmlns="http://www.w3.org/2000/svg"></svg>
+        <div id="nodes"></div>
+      </div>
+    </div>
+
     <div class="toast" id="toast"></div>
   </div>
 </div>
 
 <script>
 (() => {
-  const STORAGE_KEY = "mindmap_pro_lite_v8";
-  const MIGRATE_KEYS = ["mindmap_pro_lite_v7","mindmap_pro_lite_v6","mini_mindmap_v5","mini_mindmap_v4","mini_mindmap_v3","mini_mindmap_v2","mini_mindmap_v1"];
-
-  const svg = document.getElementById("svg");
-  const wrap = document.getElementById("wrap");
-  const toast = document.getElementById("toast");
-  const ctx = document.getElementById("ctx");
+  // ========= Storage model: multiple projects =========
+  const STORE_KEY = "mindmap_projects_v1";
 
   const PALETTE = [
     {name:"Sky",    fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.62)"},
@@ -266,31 +381,19 @@
     {name:"Violet", fill:"rgba(176,122,255,.18)", stroke:"rgba(135,90,210,.64)"},
     {name:"Slate",  fill:"rgba(255,255,255,.80)", stroke:"rgba(11,19,36,.18)"}
   ];
-
   const ICONS = ["💡","✅","🎯","📌","🧠","⚡","🧩","🔥","📎","🔗","⭐","📝","📚","🧪","🐞","🧭"];
 
-  let tool = "select";
+  const wrap = document.getElementById("wrap");
+  const scene = document.getElementById("scene");
+  const world = document.getElementById("world");
+  const linksSvg = document.getElementById("links");
+  const nodesLayer = document.getElementById("nodes");
+  const toast = document.getElementById("toast");
+  const ctx = document.getElementById("ctx");
 
-  let state = {
-    nodes: [],
-    links: [],
-    view: {x:24,y:24,k:1}
-  };
-
-  let selectedNodeId = null;
-  let editingNodeId = null;
-
-  let drag = null; // {type:'node'|'pan', pointerId, sx,sy, moved, base:{x,y} or ox,oy}
-  const pointers = new Map();
-  let pinch = null;
-  const DRAG_THRESHOLD = 6;
-
-  // tap system (now handled on SVG pointerup due to pointer capture)
-  const tap = { nodeId:null, count:0, t:0, timer:null, textDiv:null };
-  const TAP_WINDOW = 420;
-
-  // which node did we press last (for SVG pointerup routing)
-  let activeNodeForTap = null;
+  const projectSelect = document.getElementById("projectSelect");
+  const importOne = document.getElementById("importOne");
+  const importAll = document.getElementById("importAll");
 
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
 
@@ -301,28 +404,30 @@
     showToast._t = setTimeout(()=> toast.classList.remove("show"), 1400);
   }
 
-  function getNode(id){ return state.nodes.find(n => n.id === id); }
-  function childrenOf(id){ return state.nodes.filter(n => n.parentId === id).map(n => n.id); }
+  function nowTs(){ return Date.now(); }
 
-  function clientToWorld(cx, cy){
-    const r = svg.getBoundingClientRect();
-    return {
-      x: (cx - r.left - state.view.x) / state.view.k,
-      y: (cy - r.top  - state.view.y) / state.view.k
-    };
-  }
+  // ====== Data structures ======
+  // store: { activeId, projects: { [id]: {id, name, createdAt, updatedAt, data:{nodes,links,view}} } }
+  // map data: nodes: {id,x,y,w,h,text,icon,style,childColorNext,parentId,collapsed}
+  let store = null;
+  let active = null; // active project object
+  let map = null;    // active.data
 
-  function worldToClient(wx, wy){
-    const r = svg.getBoundingClientRect();
-    return {
-      x: r.left + state.view.x + wx * state.view.k,
-      y: r.top  + state.view.y + wy * state.view.k
-    };
-  }
+  let tool = "select";
+  let selectedId = null;
+  let editingId = null;
 
-  // compact sizing (height fixed, text clamped to 2 lines)
-  const measurer = document.createElement("canvas");
-  const mctx = measurer.getContext("2d");
+  const DRAG_THRESHOLD = 6;
+  let drag = null; // {kind:'node'|'pan', pointerId, sx,sy, moved, baseX,baseY, startViewX,startViewY}
+  const pointers = new Map();
+  let pinch = null;
+
+  // Tap logic (stable)
+  const tap = { id:null, count:0, t:0, timer:null };
+  const TAP_WINDOW = 420;
+
+  const measureCanvas = document.createElement("canvas");
+  const mctx = measureCanvas.getContext("2d");
   const FONT = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
 
   function measureNode(text){
@@ -336,7 +441,141 @@
     return {w,h};
   }
 
-  const isHiddenByCollapse = (nodeId) => {
+  function saveStore(){
+    try{ localStorage.setItem(STORE_KEY, JSON.stringify(store)); }catch(e){}
+  }
+
+  function loadStore(){
+    try{
+      const raw = localStorage.getItem(STORE_KEY);
+      if (raw){
+        const obj = JSON.parse(raw);
+        if (obj && obj.projects && typeof obj.projects === "object"){
+          return obj;
+        }
+      }
+    }catch(e){}
+    return null;
+  }
+
+  function normalizeMapData(data){
+    data.view ||= {x:24,y:24,k:1};
+    data.nodes ||= [];
+    data.links ||= [];
+    data.nodes.forEach(n => {
+      n.text ||= "Идея";
+      n.icon = (typeof n.icon === "string") ? n.icon : "💡";
+      n.style ||= { fill: PALETTE[0].fill, stroke: PALETTE[0].stroke };
+      n.childColorNext ||= 0;
+      n.parentId = n.parentId || null;
+      n.collapsed = !!n.collapsed;
+      const m = measureNode(n.text);
+      n.w = m.w; n.h = m.h;
+    });
+    data.links = data.links.filter(l => l && l.a && l.b && l.a !== l.b);
+    return data;
+  }
+
+  function createEmptyProject(name="Новый майндмэп"){
+    const id = uid();
+    const data = normalizeMapData({
+      nodes: [],
+      links: [],
+      view: {x:24,y:24,k:1}
+    });
+
+    // Create a center node by default
+    const centerId = uid();
+    const m = measureNode("Центральная идея");
+    data.nodes.push({
+      id:centerId,
+      x:260, y:180,
+      w:m.w, h:m.h,
+      text:"Центральная идея",
+      icon:"🎯",
+      style:{fill: PALETTE[0].fill, stroke: PALETTE[0].stroke},
+      childColorNext: 0,
+      parentId: null,
+      collapsed: false
+    });
+
+    const p = { id, name, createdAt: nowTs(), updatedAt: nowTs(), data };
+    store.projects[id] = p;
+    store.activeId = id;
+    saveStore();
+    return p;
+  }
+
+  function setActiveProject(id){
+    const p = store.projects[id];
+    if (!p) return;
+    store.activeId = id;
+    active = p;
+    map = normalizeMapData(JSON.parse(JSON.stringify(p.data))); // work copy
+    selectedId = null;
+    editingId = null;
+    saveStore();
+    rebuildProjectSelect();
+    renderAll();
+  }
+
+  function commitMap(){
+    if (!active) return;
+    active.updatedAt = nowTs();
+    active.data = JSON.parse(JSON.stringify(map));
+    saveStore();
+  }
+
+  // Debounced autosave
+  function autosave(){
+    clearTimeout(autosave._t);
+    autosave._t = setTimeout(() => commitMap(), 250);
+  }
+
+  // ====== Init store/projects ======
+  function init(){
+    store = loadStore();
+    if (!store){
+      store = { activeId: null, projects: {} };
+      createEmptyProject("Мой первый майндмэп");
+    } else {
+      // If empty, create one
+      if (!store.projects || Object.keys(store.projects).length === 0){
+        store.projects = {};
+        createEmptyProject("Мой первый майндмэп");
+      }
+      // Ensure activeId exists
+      if (!store.activeId || !store.projects[store.activeId]){
+        store.activeId = Object.keys(store.projects)[0];
+      }
+    }
+    saveStore();
+    rebuildProjectSelect();
+    setActiveProject(store.activeId);
+  }
+
+  function rebuildProjectSelect(){
+    projectSelect.innerHTML = "";
+    const ids = Object.keys(store.projects)
+      .map(id => store.projects[id])
+      .sort((a,b) => (b.updatedAt||0) - (a.updatedAt||0))
+      .map(p => p.id);
+
+    for (const id of ids){
+      const p = store.projects[id];
+      const opt = document.createElement("option");
+      opt.value = id;
+      opt.textContent = p.name || "Без названия";
+      if (id === store.activeId) opt.selected = true;
+      projectSelect.appendChild(opt);
+    }
+  }
+
+  // ====== Map helpers ======
+  function getNode(id){ return map.nodes.find(n => n.id === id); }
+  function childrenOf(id){ return map.nodes.filter(n => n.parentId === id).map(n => n.id); }
+
+  function isHiddenByCollapse(nodeId){
     let cur = getNode(nodeId);
     while(cur && cur.parentId){
       const p = getNode(cur.parentId);
@@ -344,73 +583,138 @@
       cur = p;
     }
     return false;
-  };
+  }
 
-  function save(){ try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){} }
+  function addLink(a,b){
+    if (!a || !b || a===b) return;
+    const exists = map.links.some(l => (l.a===a && l.b===b) || (l.a===b && l.b===a));
+    if (exists) return;
+    map.links.push({ id: uid(), a, b });
+  }
 
-  function load(){
-    try{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw){
-        const obj = JSON.parse(raw);
-        if (obj && Array.isArray(obj.nodes) && Array.isArray(obj.links)){
-          state = obj;
-          state.view ||= {x:24,y:24,k:1};
-          state.nodes.forEach(n => {
-            n.text ||= "Идея";
-            const m = measureNode(n.text);
-            n.w = m.w; n.h = m.h;
-            n.icon = (typeof n.icon === "string") ? n.icon : "💡";
-            n.style ||= {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke};
-            n.childColorNext ||= 0;
-            n.type ||= "mind";
-            n.collapsed = !!n.collapsed;
-            n.parentId = n.parentId || null;
-          });
-          return true;
-        }
-      }
+  function addNodeAt(x,y, text="Новая идея", icon="💡", style=PALETTE[0]){
+    const m = measureNode(text);
+    const id = uid();
+    map.nodes.push({
+      id, x, y, w:m.w, h:m.h,
+      text, icon,
+      style: {fill: style.fill, stroke: style.stroke},
+      childColorNext: 0,
+      parentId: null,
+      collapsed: false
+    });
+    selectedId = id;
+    autosave();
+    renderAll();
+    return id;
+  }
 
-      for (const k of MIGRATE_KEYS){
-        const oldRaw = localStorage.getItem(k);
-        if (!oldRaw) continue;
-        const old = JSON.parse(oldRaw);
-        if (!old || !Array.isArray(old.nodes) || !Array.isArray(old.links)) continue;
+  function addChildFrom(parentId){
+    const parent = getNode(parentId);
+    if (!parent) return null;
 
-        state.nodes = old.nodes.map(n => {
-          const text = n.text || "Идея";
-          const m = measureNode(text);
-          return {
-            id: n.id || uid(),
-            x: Number(n.x)||0,
-            y: Number(n.y)||0,
-            w: m.w, h: m.h,
-            text,
-            icon: (typeof n.icon === "string") ? n.icon : "💡",
-            style: n.style ? n.style : {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke},
-            childColorNext: n.childColorNext || 0,
-            type: n.type || "mind",
-            collapsed: false,
-            parentId: n.parentId || null
-          };
-        });
-        state.links = old.links.map(l => ({id:l.id||uid(), a:l.a, b:l.b})).filter(l => l.a && l.b);
-        state.view = old.view || {x:24,y:24,k:1};
-        save();
-        return true;
-      }
-      return false;
-    }catch(e){
-      return false;
+    const idx = ((parent.childColorNext||0) + 1) % PALETTE.length;
+    parent.childColorNext = (parent.childColorNext||0) + 1;
+    const style = PALETTE[idx];
+
+    const x = parent.x + parent.w + 140;
+    const y = parent.y + (Math.random()*70 - 35);
+
+    const id = uid();
+    const m = measureNode("Дочерняя идея");
+    map.nodes.push({
+      id,
+      x, y, w:m.w, h:m.h,
+      text:"Дочерняя идея",
+      icon:"✅",
+      style:{fill: style.fill, stroke: style.stroke},
+      childColorNext: 0,
+      parentId: parentId,
+      collapsed:false
+    });
+    addLink(parentId, id);
+
+    selectedId = id;
+    autosave();
+    renderAll();
+    return id;
+  }
+
+  function addSiblingFrom(nodeId){
+    const n = getNode(nodeId);
+    if (!n) return null;
+    const parentId = n.parentId || null;
+
+    const x = n.x;
+    const y = n.y + n.h + 18;
+
+    const id = uid();
+    const m = measureNode("Новая идея");
+    map.nodes.push({
+      id, x, y, w:m.w, h:m.h,
+      text:"Новая идея",
+      icon: n.icon || "💡",
+      style: n.style ? {fill:n.style.fill, stroke:n.style.stroke} : {fill:PALETTE[0].fill, stroke:PALETTE[0].stroke},
+      childColorNext: 0,
+      parentId,
+      collapsed:false
+    });
+    if (parentId) addLink(parentId, id);
+
+    selectedId = id;
+    autosave();
+    renderAll();
+    return id;
+  }
+
+  function deleteSubtree(id){
+    const ids = new Set();
+    const stack = [id];
+    while(stack.length){
+      const v = stack.pop();
+      ids.add(v);
+      for (const c of childrenOf(v)) stack.push(c);
     }
+    map.nodes = map.nodes.filter(n => !ids.has(n.id));
+    map.links = map.links.filter(l => !ids.has(l.a) && !ids.has(l.b));
+    if (selectedId && ids.has(selectedId)) selectedId = null;
+    autosave();
+    renderAll();
   }
 
-  function el(name, attrs={}){
-    const x = document.createElementNS("http://www.w3.org/2000/svg", name);
-    for (const [k,v] of Object.entries(attrs)) x.setAttribute(k, String(v));
-    return x;
+  function toggleCollapse(id){
+    const n = getNode(id);
+    if (!n) return;
+    n.collapsed = !n.collapsed;
+    autosave();
+    renderAll();
   }
 
+  // ====== View transform ======
+  function applyTransform(){
+    const v = map.view;
+    world.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.k})`;
+  }
+
+  function clientToWorld(cx, cy){
+    const r = scene.getBoundingClientRect();
+    const v = map.view;
+    return {
+      x: (cx - r.left - v.x) / v.k,
+      y: (cy - r.top  - v.y) / v.k
+    };
+  }
+
+  function worldToClient(wx, wy){
+    const r = scene.getBoundingClientRect();
+    const v = map.view;
+    return {
+      x: r.left + v.x + wx * v.k,
+      y: r.top  + v.y + wy * v.k
+    };
+  }
+
+  // ====== Links drawing ======
   function edgePoint(fromNode, toNode){
     const cx = fromNode.x + fromNode.w/2;
     const cy = fromNode.y + fromNode.h/2;
@@ -427,159 +731,16 @@
     return { x: cx + dx * t, y: cy + dy * t };
   }
 
-  function addNode(x, y, text="Новая идея", icon="💡", style=PALETTE[0], type="mind"){
-    const m = measureNode(text);
-    const id = uid();
-    state.nodes.push({
-      id, x, y, w:m.w, h:m.h,
-      text,
-      icon: (icon||"").trim(),
-      style: {fill: style.fill, stroke: style.stroke},
-      childColorNext: 0,
-      type,
-      collapsed: false,
-      parentId: null
-    });
-    selectedNodeId = id;
-    save(); render();
-    return id;
-  }
+  function drawLinks(){
+    // set big enough svg size (world coords)
+    // We'll keep it large so it covers typical map; dynamic expand:
+    const maxX = Math.max(2000, ...map.nodes.map(n => n.x + n.w + 300));
+    const maxY = Math.max(1400, ...map.nodes.map(n => n.y + n.h + 300));
+    linksSvg.setAttribute("width", maxX);
+    linksSvg.setAttribute("height", maxY);
 
-  function addLink(a, b){
-    if (!a || !b || a===b) return;
-    const exists = state.links.some(l => (l.a===a && l.b===b) || (l.a===b && l.b===a));
-    if (exists) return;
-    state.links.push({id: uid(), a, b});
-  }
-
-  function addChildFrom(parentId){
-    const parent = getNode(parentId);
-    if (!parent) return null;
-
-    const idx = ((parent.childColorNext || 0) + 1) % PALETTE.length;
-    parent.childColorNext = (parent.childColorNext || 0) + 1;
-    const style = PALETTE[idx];
-
-    const x = parent.x + parent.w + 140;
-    const y = parent.y + (Math.random()*70 - 35);
-
-    const childId = addNode(x, y, "Дочерняя идея", "✅", style, "mind");
-    const child = getNode(childId);
-    child.parentId = parentId;
-
-    addLink(parentId, childId);
-    save(); render();
-    return childId;
-  }
-
-  function addSiblingFrom(nodeId){
-    const n = getNode(nodeId);
-    if (!n) return null;
-    const parentId = n.parentId || null;
-
-    const x = n.x;
-    const y = n.y + n.h + 18;
-
-    const style = n.style || {fill:PALETTE[0].fill, stroke:PALETTE[0].stroke};
-    const sibId = addNode(x, y, "Новая идея", n.icon || "💡", style, n.type || "mind");
-    const sib = getNode(sibId);
-    sib.parentId = parentId;
-
-    if (parentId) addLink(parentId, sibId);
-    save(); render();
-    return sibId;
-  }
-
-  function toggleCollapse(nodeId){
-    const n = getNode(nodeId);
-    if (!n) return;
-    n.collapsed = !n.collapsed;
-    save(); render();
-  }
-
-  function beginInlineEdit(nodeId, textDiv){
-    const n = getNode(nodeId);
-    if (!n || !textDiv) return;
-
-    if (tap.timer){ clearTimeout(tap.timer); tap.timer=null; }
-
-    editingNodeId = nodeId;
-
-    textDiv.contentEditable = "true";
-    textDiv.style.cursor = "text";
-    textDiv.style.userSelect = "text";
-    textDiv.style.webkitUserSelect = "text";
-    textDiv.style.outline = "none";
-    textDiv.focus();
-
-    const range = document.createRange();
-    range.selectNodeContents(textDiv);
-    range.collapse(false);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-
-    const finish = (saveChanges) => {
-      textDiv.removeEventListener("keydown", onKey);
-      textDiv.removeEventListener("blur", onBlur);
-
-      if (saveChanges){
-        const val = (textDiv.textContent || "").trim();
-        n.text = val || "Идея";
-        const m = measureNode(n.text);
-        n.w = m.w; n.h = m.h;
-      } else {
-        textDiv.textContent = n.text || "Идея";
-      }
-
-      textDiv.contentEditable = "false";
-      textDiv.style.cursor = "default";
-      textDiv.style.userSelect = "none";
-      textDiv.style.webkitUserSelect = "none";
-
-      editingNodeId = null;
-      save(); render();
-    };
-
-    const onKey = (e) => {
-      if (e.key === "Enter"){ e.preventDefault(); textDiv.blur(); }
-      if (e.key === "Escape"){ e.preventDefault(); finish(false); }
-      e.stopPropagation();
-    };
-    const onBlur = () => finish(true);
-
-    textDiv.addEventListener("keydown", onKey);
-    textDiv.addEventListener("blur", onBlur);
-  }
-
-  // toolbar position: BELOW and CLOSE (6px)
-  function positionContextToolbar(){
-    if (!selectedNodeId) { ctx.style.display="none"; return; }
-    const n = getNode(selectedNodeId);
-    if (!n || isHiddenByCollapse(n.id)) { ctx.style.display="none"; return; }
-
-    const tl = worldToClient(n.x, n.y);
-    const nodeW = n.w * state.view.k;
-    const nodeH = n.h * state.view.k;
-
-    const left = tl.x + nodeW/2 - 180;
-    const top  = tl.y + nodeH + 6; // close to node
-
-    ctx.style.display = "flex";
-    ctx.style.left = Math.max(12, Math.min(window.innerWidth - 380, left)) + "px";
-    ctx.style.top  = Math.max(76, Math.min(window.innerHeight - 60, top)) + "px";
-
-    const kids = childrenOf(n.id);
-    document.getElementById("ctxCollapse").style.opacity = kids.length ? "1" : ".45";
-  }
-
-  function render(){
-    while(svg.firstChild) svg.removeChild(svg.firstChild);
-    const gView = el("g", { transform: `translate(${state.view.x},${state.view.y}) scale(${state.view.k})` });
-    svg.appendChild(gView);
-
-    // links
-    for (const l of state.links){
+    linksSvg.innerHTML = "";
+    for (const l of map.links){
       const a = getNode(l.a), b = getNode(l.b);
       if (!a || !b) continue;
       if (isHiddenByCollapse(a.id) || isHiddenByCollapse(b.id)) continue;
@@ -591,153 +752,268 @@
       const c2x = p1.x + dx * 0.66;
       const d = `M ${p1.x} ${p1.y} C ${c1x} ${p1.y}, ${c2x} ${p2.y}, ${p2.x} ${p2.y}`;
 
-      gView.appendChild(el("path", { d, class:"link" }));
+      const path = document.createElementNS("http://www.w3.org/2000/svg","path");
+      path.setAttribute("d", d);
+      path.setAttribute("class","link");
+      linksSvg.appendChild(path);
     }
+  }
 
-    // nodes
-    for (const n of state.nodes){
+  // ====== Nodes rendering ======
+  function renderNodes(){
+    nodesLayer.innerHTML = "";
+
+    for (const n of map.nodes){
       if (isHiddenByCollapse(n.id)) continue;
 
-      const isSel = (n.id === selectedNodeId);
-      const gn = el("g", {
-        class: "node" + (isSel ? " selected" : ""),
-        transform: `translate(${n.x},${n.y})`,
-        "data-node-id": n.id
-      });
-
-      gn.appendChild(el("rect", {
-        width:n.w, height:n.h,
-        style:`fill:${n.style?.fill || "rgba(255,255,255,.8)"};stroke:${n.style?.stroke || "rgba(11,19,36,.18)"};stroke-width:1.2;`
-      }));
-
-      const fo = el("foreignObject", { x:0, y:0, width:n.w, height:n.h });
       const div = document.createElement("div");
-      div.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
-      div.style.cssText = `
-        width:${n.w}px; height:${n.h}px;
-        display:flex; align-items:center; gap:10px;
-        padding: 10px 12px;
-        color: rgba(11,19,36,.95);
-        font: ${FONT};
-        overflow:hidden;
-        user-select:none;
-      `;
+      div.className = "node" + (n.id === selectedId ? " selected" : "");
+      div.style.left = n.x + "px";
+      div.style.top  = n.y + "px";
+      div.style.width = n.w + "px";
+      div.style.height = n.h + "px";
+      div.style.background = n.style?.fill || "rgba(255,255,255,.80)";
+      div.style.borderColor = n.style?.stroke || "rgba(11,19,36,.18)";
+      div.setAttribute("data-id", n.id);
 
       const icon = document.createElement("div");
-      icon.style.cssText = `
-        flex:0 0 auto;
-        width:20px; height:20px;
-        font-size:18px; line-height: 1;
-        display:flex; align-items:center; justify-content:center;
-        overflow: visible;
-      `;
+      icon.className = "icon";
       icon.textContent = n.icon || "";
 
       const text = document.createElement("div");
-      text.style.cssText = `
-        flex:1 1 auto;
-        overflow:hidden;
-        word-break: break-word;
-        line-height: 1.15;
-        cursor: default;
-        pointer-events:auto;
-        display:-webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-      `;
+      text.className = "text";
       text.textContent = n.text || "";
 
       div.appendChild(icon);
       div.appendChild(text);
-      fo.appendChild(div);
-      gn.appendChild(fo);
 
-      // IMPORTANT: node pointerdown only sets active node for tap logic.
-      gn.addEventListener("pointerdown", (e) => {
+      // pointerdown for selection + drag start
+      div.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
         e.stopPropagation();
-        if (editingNodeId) return;
+        if (editingId) return;
 
-        selectedNodeId = n.id;
-        activeNodeForTap = { id: n.id, textDiv: text };
+        selectedId = n.id;
+        renderSelectionOnly();
+        positionCtx();
 
-        render();
-        positionContextToolbar();
-
-        if (tool === "hand"){
-          drag = { type:"pan", pointerId:e.pointerId, sx:e.clientX, sy:e.clientY, moved:false, ox:state.view.x, oy:state.view.y };
-          svg.setPointerCapture(e.pointerId);
-          return;
-        }
-
-        drag = { type:"node", pointerId:e.pointerId, sx:e.clientX, sy:e.clientY, moved:false, base:{x:n.x, y:n.y} };
-        svg.setPointerCapture(e.pointerId);
+        // start node drag
+        drag = {
+          kind: "node",
+          pointerId: e.pointerId,
+          sx: e.clientX, sy: e.clientY,
+          moved: false,
+          baseX: n.x, baseY: n.y
+        };
+        div.setPointerCapture(e.pointerId);
       });
 
-      gView.appendChild(gn);
+      // Tap counting on pointerup of the same element
+      div.addEventListener("pointerup", (e) => {
+        e.stopPropagation();
+        if (editingId) return;
 
-      // +/- collapse dot
+        // if drag moved, ignore as click
+        if (drag && drag.kind === "node" && drag.pointerId === e.pointerId && drag.moved) return;
+
+        const now = Date.now();
+        const same = (tap.id === n.id) && (now - tap.t <= TAP_WINDOW);
+
+        tap.id = n.id;
+        tap.t = now;
+        tap.count = same ? (tap.count + 1) : 1;
+
+        if (tap.timer) clearTimeout(tap.timer);
+        tap.timer = setTimeout(() => {
+          if (tap.id !== n.id) return;
+
+          if (tap.count === 2){
+            addChildFrom(n.id);
+          } else if (tap.count >= 3){
+            beginEdit(n.id);
+          }
+          tap.id = null;
+          tap.count = 0;
+          tap.timer = null;
+        }, TAP_WINDOW + 30);
+      });
+
+      nodesLayer.appendChild(div);
+
+      // collapse dot (if has children)
       const kids = childrenOf(n.id);
       if (kids.length){
-        const dotX = n.x + n.w + 10;
-        const dotY = n.y + n.h/2 - 10;
+        const dot = document.createElement("div");
+        dot.className = "collapseDot";
+        dot.style.left = (n.x + n.w + 10) + "px";
+        dot.style.top  = (n.y + n.h/2 - 11) + "px";
+        dot.textContent = n.collapsed ? "+" : "–";
+        dot.title = n.collapsed ? "Развернуть" : "Свернуть";
 
-        const gDot = el("g", { class:"toggleDot", transform:`translate(${dotX},${dotY})` });
-        gDot.appendChild(el("circle", {
-          cx:10, cy:10, r:10,
-          style:`fill: rgba(255,255,255,.92); stroke: rgba(11,19,36,.16); stroke-width:1;`
-        }));
-        const sign = el("text", {
-          x:10, y:14,
-          "text-anchor":"middle",
-          style:`font: 14px system-ui; fill: rgba(11,19,36,.80);`
-        });
-        sign.textContent = n.collapsed ? "+" : "–";
-        gDot.appendChild(sign);
-        gDot.addEventListener("pointerdown", (e) => {
+        dot.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
           e.stopPropagation();
           toggleCollapse(n.id);
-          positionContextToolbar();
         });
-        gView.appendChild(gDot);
+
+        nodesLayer.appendChild(dot);
       }
     }
-
-    positionContextToolbar();
   }
 
-  // ===== background gestures (pan/zoom) + node drag =====
-  svg.addEventListener("pointerdown", (e) => {
-    pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  function renderSelectionOnly(){
+    // don’t rebuild everything: only selected class
+    [...nodesLayer.querySelectorAll(".node")].forEach(el => {
+      el.classList.toggle("selected", el.getAttribute("data-id") === selectedId);
+    });
+  }
 
-    if (pointers.size === 2){
-      const pts = [...pointers.values()];
-      pinch = { dist0: Math.hypot(pts[1].x-pts[0].x, pts[1].y-pts[0].y), k0: state.view.k };
-      return;
-    }
+  function renderAll(){
+    applyTransform();
+    drawLinks();
+    renderNodes();
+    positionCtx();
+  }
 
-    const nodeId = findNodeFromEvent(e);
-    if (!nodeId){
-      activeNodeForTap = null;
+  // ====== Context toolbar ======
+  function positionCtx(){
+    if (!selectedId) { ctx.style.display = "none"; return; }
+    const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(selectedId)}"]`);
+    const n = getNode(selectedId);
+    if (!nodeEl || !n || isHiddenByCollapse(selectedId)) { ctx.style.display = "none"; return; }
 
-      if (tool === "node" || tool === "sticky" || tool === "text"){
-        const p = clientToWorld(e.clientX, e.clientY);
-        if (tool === "node") addNode(p.x-90, p.y-30, "Новая идея", "💡", PALETTE[0], "mind");
-        if (tool === "sticky") addNode(p.x-90, p.y-30, "Заметка", "🗒️", PALETTE[5], "sticky");
-        if (tool === "text") addNode(p.x-90, p.y-30, "Текст", "🔤", PALETTE[5], "text");
-        return;
+    const rect = nodeEl.getBoundingClientRect();
+    // Put it close: 6px below
+    const left = rect.left + rect.width/2 - 180;
+    const top  = rect.bottom + 6;
+
+    ctx.style.display = "flex";
+    ctx.style.left = Math.max(12, Math.min(window.innerWidth - 380, left)) + "px";
+    ctx.style.top  = Math.max(76, Math.min(window.innerHeight - 60, top)) + "px";
+
+    // collapse icon dim if no children
+    const hasKids = childrenOf(selectedId).length > 0;
+    document.getElementById("ctxCollapse").style.opacity = hasKids ? "1" : ".45";
+  }
+
+  document.getElementById("ctxChild").onclick = () => { if (selectedId) addChildFrom(selectedId); };
+  document.getElementById("ctxSibling").onclick = () => { if (selectedId) addSiblingFrom(selectedId); };
+  document.getElementById("ctxRename").onclick = () => { if (selectedId) beginEdit(selectedId); };
+  document.getElementById("ctxColor").onclick = () => {
+    const n = getNode(selectedId); if (!n) return;
+    const i = PALETTE.findIndex(p => p.fill === n.style.fill && p.stroke === n.style.stroke);
+    const next = PALETTE[(Math.max(0,i)+1) % PALETTE.length];
+    n.style = {fill: next.fill, stroke: next.stroke};
+    autosave(); renderAll();
+  };
+  document.getElementById("ctxIcon").onclick = () => {
+    const n = getNode(selectedId); if (!n) return;
+    const i = ICONS.indexOf(n.icon);
+    n.icon = ICONS[(i+1+ICONS.length) % ICONS.length];
+    autosave(); renderAll();
+  };
+  document.getElementById("ctxCollapse").onclick = () => { if (selectedId) toggleCollapse(selectedId); };
+  document.getElementById("ctxDelete").onclick = () => { if (selectedId) deleteSubtree(selectedId); };
+  document.getElementById("ctxClose").onclick = () => { selectedId = null; renderSelectionOnly(); positionCtx(); };
+
+  // ====== Inline edit ======
+  function beginEdit(id){
+    if (editingId) return;
+    const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(id)}"]`);
+    const n = getNode(id);
+    if (!nodeEl || !n) return;
+
+    editingId = id;
+    nodeEl.classList.add("editing");
+
+    const textEl = nodeEl.querySelector(".text");
+    textEl.contentEditable = "true";
+    textEl.textContent = n.text || "";
+    textEl.focus();
+
+    // caret to end
+    const range = document.createRange();
+    range.selectNodeContents(textEl);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+
+    const finish = (saveChanges) => {
+      textEl.removeEventListener("keydown", onKey);
+      textEl.removeEventListener("blur", onBlur);
+
+      if (saveChanges){
+        const val = (textEl.textContent || "").trim();
+        n.text = val || "Идея";
+        const m = measureNode(n.text);
+        n.w = m.w; n.h = m.h;
+      } else {
+        textEl.textContent = n.text || "Идея";
       }
 
-      selectedNodeId = null;
-      render();
+      textEl.contentEditable = "false";
+      nodeEl.classList.remove("editing");
+      editingId = null;
 
-      drag = { type:"pan", pointerId:e.pointerId, sx:e.clientX, sy:e.clientY, moved:false, ox:state.view.x, oy:state.view.y };
-      svg.setPointerCapture(e.pointerId);
+      autosave();
+      renderAll();
+    };
+
+    const onKey = (e) => {
+      if (e.key === "Enter"){ e.preventDefault(); textEl.blur(); }
+      if (e.key === "Escape"){ e.preventDefault(); finish(false); }
+      e.stopPropagation();
+    };
+    const onBlur = () => finish(true);
+
+    textEl.addEventListener("keydown", onKey);
+    textEl.addEventListener("blur", onBlur);
+  }
+
+  // ====== Pan / Zoom / Drag ======
+  scene.addEventListener("pointerdown", (e) => {
+    pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+
+    // if pointerdown on empty space and tool is node -> create node
+    const isOnNode = !!e.target.closest(".node") || !!e.target.closest(".collapseDot") || e.target.closest(".ctx");
+    if (!isOnNode){
+      if (tool === "node"){
+        const p = clientToWorld(e.clientX, e.clientY);
+        addNodeAt(p.x - 90, p.y - 30, "Новая идея", "💡", PALETTE[0]);
+        return;
+      }
+      // background selection clear
+      selectedId = null;
+      positionCtx();
+      renderSelectionOnly();
+
+      // start pan
+      drag = {
+        kind:"pan",
+        pointerId:e.pointerId,
+        sx:e.clientX, sy:e.clientY,
+        moved:false,
+        startViewX: map.view.x,
+        startViewY: map.view.y
+      };
+      scene.setPointerCapture(e.pointerId);
+    }
+
+    // pinch start
+    if (pointers.size === 2){
+      const pts = [...pointers.values()];
+      pinch = {
+        dist0: Math.hypot(pts[1].x-pts[0].x, pts[1].y-pts[0].y),
+        k0: map.view.k
+      };
     }
   });
 
-  svg.addEventListener("pointermove", (e) => {
+  scene.addEventListener("pointermove", (e) => {
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
 
+    // pinch zoom
     if (pointers.size === 2 && pinch){
       const pts = [...pointers.values()];
       const dist = Math.hypot(pts[1].x-pts[0].x, pts[1].y-pts[0].y);
@@ -747,185 +1023,126 @@
       const mid = {x:(pts[0].x+pts[1].x)/2, y:(pts[0].y+pts[1].y)/2};
       const before = clientToWorld(mid.x, mid.y);
 
-      state.view.k = nk;
-      const r = svg.getBoundingClientRect();
+      map.view.k = nk;
+      const r = scene.getBoundingClientRect();
       const vx = mid.x - r.left;
       const vy = mid.y - r.top;
-      state.view.x = vx - before.x * nk;
-      state.view.y = vy - before.y * nk;
+      map.view.x = vx - before.x * nk;
+      map.view.y = vy - before.y * nk;
 
-      render();
+      applyTransform();
+      positionCtx();
       return;
     }
 
     if (!drag || drag.pointerId !== e.pointerId) return;
 
-    const dxC = e.clientX - drag.sx;
-    const dyC = e.clientY - drag.sy;
-    const dist = Math.hypot(dxC, dyC);
+    const dx = e.clientX - drag.sx;
+    const dy = e.clientY - drag.sy;
+    const dist = Math.hypot(dx, dy);
     if (!drag.moved && dist > DRAG_THRESHOLD) drag.moved = true;
     if (!drag.moved) return;
 
-    if (drag.type === "node"){
-      const n = getNode(selectedNodeId);
-      if (!n) return;
-      n.x = drag.base.x + dxC / state.view.k;
-      n.y = drag.base.y + dyC / state.view.k;
-      render(); positionContextToolbar();
+    if (drag.kind === "pan"){
+      map.view.x = drag.startViewX + dx;
+      map.view.y = drag.startViewY + dy;
+      applyTransform();
+      positionCtx();
+      autosave();
       return;
     }
-    if (drag.type === "pan"){
-      state.view.x = drag.ox + dxC;
-      state.view.y = drag.oy + dyC;
-      render(); positionContextToolbar();
+
+    if (drag.kind === "node"){
+      // node dragging is handled on node element via pointer capture, but
+      // keep safe if it reaches here
     }
   });
 
-  // CRITICAL: tap counting happens here (SVG gets pointerup due to capture)
-  svg.addEventListener("pointerup", (e) => {
+  scene.addEventListener("pointerup", (e) => {
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = null;
 
-    // finish drag
-    let moved = false;
-    if (drag && drag.pointerId === e.pointerId){
-      moved = !!drag.moved;
+    // release pan drag
+    if (drag && drag.pointerId === e.pointerId && drag.kind === "pan"){
       drag = null;
-      if (moved) save();
     }
-
-    // no node => nothing to count
-    if (!activeNodeForTap || editingNodeId) { render(); positionContextToolbar(); return; }
-
-    // if it was a drag, don't treat as click
-    if (moved) { render(); positionContextToolbar(); return; }
-
-    // count taps
-    const nodeId = activeNodeForTap.id;
-    const textDiv = activeNodeForTap.textDiv;
-
-    const now = Date.now();
-    const same = (tap.nodeId === nodeId) && (now - tap.t <= TAP_WINDOW);
-    tap.nodeId = nodeId;
-    tap.textDiv = textDiv;
-    tap.t = now;
-    tap.count = same ? (tap.count + 1) : 1;
-
-    if (tap.timer) clearTimeout(tap.timer);
-
-    tap.timer = setTimeout(() => {
-      if (tap.nodeId !== nodeId) return;
-
-      if (tap.count === 2){
-        const childId = addChildFrom(nodeId);
-        selectedNodeId = childId;
-        render(); positionContextToolbar();
-      } else if (tap.count >= 3){
-        beginInlineEdit(nodeId, tap.textDiv);
-      }
-
-      tap.count = 0;
-      tap.nodeId = null;
-      tap.textDiv = null;
-      tap.timer = null;
-    }, TAP_WINDOW + 30);
-
-    render(); positionContextToolbar();
   });
 
+  // Node drag move happens on captured node element via pointermove on scene is not reliable;
+  // We'll attach global listener to move selected node while drag.kind === 'node'
+  window.addEventListener("pointermove", (e) => {
+    if (!drag || drag.kind !== "node" || drag.pointerId !== e.pointerId) return;
+    const n = getNode(selectedId);
+    if (!n) return;
+
+    const dx = e.clientX - drag.sx;
+    const dy = e.clientY - drag.sy;
+    const dist = Math.hypot(dx, dy);
+    if (!drag.moved && dist > DRAG_THRESHOLD) drag.moved = true;
+
+    if (!drag.moved) return;
+
+    n.x = drag.baseX + dx / map.view.k;
+    n.y = drag.baseY + dy / map.view.k;
+
+    // update only positions fast
+    const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(n.id)}"]`);
+    if (nodeEl){
+      nodeEl.style.left = n.x + "px";
+      nodeEl.style.top  = n.y + "px";
+    }
+    // collapse dot (if exists) will be rebuilt on full render; quick reposition now:
+    const dot = nodesLayer.querySelector(`.collapseDot[data-dot-for="${CSS.escape(n.id)}"]`);
+    if (dot){
+      dot.style.left = (n.x + n.w + 10) + "px";
+      dot.style.top  = (n.y + n.h/2 - 11) + "px";
+    }
+
+    drawLinks();
+    positionCtx();
+    autosave();
+  }, {passive:false});
+
+  window.addEventListener("pointerup", (e) => {
+    if (drag && drag.pointerId === e.pointerId && drag.kind === "node"){
+      drag = null;
+    }
+  });
+
+  // Wheel zoom
   wrap.addEventListener("wheel", (e) => {
     e.preventDefault();
     const delta = Math.sign(e.deltaY);
     const factor = delta > 0 ? 0.92 : 1.08;
 
     const before = clientToWorld(e.clientX, e.clientY);
-    const nk = Math.max(0.25, Math.min(3.2, state.view.k * factor));
+    const nk = Math.max(0.25, Math.min(3.2, map.view.k * factor));
 
-    const r = svg.getBoundingClientRect();
+    const r = scene.getBoundingClientRect();
     const vx = e.clientX - r.left;
     const vy = e.clientY - r.top;
 
-    state.view.k = nk;
-    state.view.x = vx - before.x * nk;
-    state.view.y = vy - before.y * nk;
+    map.view.k = nk;
+    map.view.x = vx - before.x * nk;
+    map.view.y = vy - before.y * nk;
 
-    render(); save();
+    applyTransform();
+    positionCtx();
+    autosave();
   }, {passive:false});
 
-  // desktop dblclick empty => new node
-  svg.addEventListener("dblclick", (e) => {
-    const nodeId = findNodeFromEvent(e);
-    if (nodeId) return;
+  // Dblclick empty space => new node
+  scene.addEventListener("dblclick", (e) => {
+    if (e.target.closest(".node") || e.target.closest(".collapseDot") || e.target.closest(".ctx")) return;
     const p = clientToWorld(e.clientX, e.clientY);
-    addNode(p.x-90, p.y-30, "Новая идея", "💡", PALETTE[0], "mind");
+    addNodeAt(p.x - 90, p.y - 30, "Новая идея", "💡", PALETTE[0]);
   });
 
-  function findNodeFromEvent(e){
-    const path = e.composedPath ? e.composedPath() : [];
-    for (const el of path){
-      if (!el || !el.getAttribute) continue;
-      const id = el.getAttribute("data-node-id");
-      if (id) return id;
-    }
-    return null;
-  }
-
-  // context toolbar actions
-  document.getElementById("ctxChild").onclick = () => { if (selectedNodeId) addChildFrom(selectedNodeId); };
-  document.getElementById("ctxSibling").onclick = () => { if (selectedNodeId) addSiblingFrom(selectedNodeId); };
-  document.getElementById("ctxRename").onclick = () => showToast("Тройной клик по узлу — редактирование");
-  document.getElementById("ctxColor").onclick = () => {
-    const n = getNode(selectedNodeId); if (!n) return;
-    const i = PALETTE.findIndex(p => p.fill === n.style.fill && p.stroke === n.style.stroke);
-    const next = PALETTE[(Math.max(0,i)+1) % PALETTE.length];
-    n.style = {fill: next.fill, stroke: next.stroke};
-    save(); render();
-  };
-  document.getElementById("ctxIcon").onclick = () => {
-    const n = getNode(selectedNodeId); if (!n) return;
-    const i = ICONS.indexOf(n.icon);
-    n.icon = ICONS[(i+1+ICONS.length) % ICONS.length];
-    save(); render();
-  };
-  document.getElementById("ctxCollapse").onclick = () => { if (selectedNodeId) toggleCollapse(selectedNodeId); };
-  document.getElementById("ctxDelete").onclick = () => deleteSelected();
-  document.getElementById("ctxClose").onclick = () => { selectedNodeId=null; render(); };
-
-  function deleteSelected(){
-    if (!selectedNodeId){ showToast("Выбери узел"); return; }
-    const id = selectedNodeId;
-
-    // delete subtree
-    const ids = new Set();
-    const stack = [id];
-    while(stack.length){
-      const v = stack.pop();
-      ids.add(v);
-      for (const c of childrenOf(v)) stack.push(c);
-    }
-
-    state.nodes = state.nodes.filter(n => !ids.has(n.id));
-    state.links = state.links.filter(l => !ids.has(l.a) && !ids.has(l.b));
-    selectedNodeId = null;
-    save(); render();
-    showToast("Удалено");
-  }
-
-  // left toolbar
+  // ====== Toolbar/tool selection ======
   function setTool(t){
     tool = t;
     document.querySelectorAll(".toolbtn").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
     if (t === "center") centerOnSelection();
-  }
-  function centerOnSelection(){
-    if (!selectedNodeId){ showToast("Выбери узел"); return; }
-    const n = getNode(selectedNodeId);
-    if (!n) return;
-    const r = svg.getBoundingClientRect();
-    const cx = r.width/2, cy = r.height/2;
-    state.view.x = cx - (n.x + n.w/2) * state.view.k;
-    state.view.y = cy - (n.y + n.h/2) * state.view.k;
-    save(); render();
   }
   document.getElementById("leftbar").addEventListener("click", (e) => {
     const btn = e.target.closest(".toolbtn");
@@ -933,73 +1150,83 @@
     setTool(btn.dataset.tool);
   });
 
-  // header buttons
-  document.getElementById("addRoot").onclick = () => {
-    if (state.nodes.length === 0){
-      addNode(260, 180, "Центральная идея", "🎯", PALETTE[0], "mind");
-      showToast("Создан центр");
-    } else {
-      const r = svg.getBoundingClientRect();
-      const p = clientToWorld(r.left + r.width/2, r.top + r.height/2);
-      addNode(p.x-90, p.y-30, "Новая идея", "💡", PALETTE[0], "mind");
-    }
-  };
-  document.getElementById("resetView").onclick = () => { state.view = {x:24,y:24,k:1}; save(); render(); };
-  document.getElementById("export").onclick = () => {
-    const data = JSON.stringify(state, null, 2);
-    const blob = new Blob([data], {type:"application/json"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "mindmap.json";
-    a.click();
-    URL.revokeObjectURL(a.href);
-    showToast("Экспортировано");
-  };
-  document.getElementById("importFile").addEventListener("change", (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    const fr = new FileReader();
-    fr.onload = () => {
-      try{
-        const obj = JSON.parse(fr.result);
-        if (!obj || !Array.isArray(obj.nodes) || !Array.isArray(obj.links)) throw new Error("bad");
-        obj.view ||= {x:24,y:24,k:1};
-        obj.nodes.forEach(n => {
-          n.text ||= "Идея";
-          const m = measureNode(n.text);
-          n.w = m.w; n.h = m.h;
-          n.icon = (typeof n.icon === "string") ? n.icon : "💡";
-          n.style ||= {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke};
-          n.childColorNext ||= 0;
-          n.type ||= "mind";
-          n.collapsed = !!n.collapsed;
-          n.parentId = n.parentId || null;
-        });
-        state = obj;
-        selectedNodeId = null;
-        save(); render();
-        showToast("Импортировано");
-      }catch(err){
-        showToast("Не удалось импортировать JSON");
-      }
-    };
-    fr.readAsText(f);
-    e.target.value = "";
+  function centerOnSelection(){
+    if (!selectedId){ showToast("Выбери узел"); setTool("select"); return; }
+    const n = getNode(selectedId); if (!n) return;
+    const r = scene.getBoundingClientRect();
+    const cx = r.width/2, cy = r.height/2;
+    map.view.x = cx - (n.x + n.w/2) * map.view.k;
+    map.view.y = cy - (n.y + n.h/2) * map.view.k;
+    applyTransform();
+    positionCtx();
+    autosave();
+    setTool("select");
+  }
+
+  // ====== Header/project actions ======
+  projectSelect.addEventListener("change", () => {
+    setActiveProject(projectSelect.value);
   });
-  document.getElementById("clearAll").onclick = () => {
-    if (!confirm("Удалить всё?")) return;
-    state.nodes = [];
-    state.links = [];
-    selectedNodeId = null;
-    state.view = {x:24,y:24,k:1};
-    save(); render();
-    showToast("Очищено");
+
+  document.getElementById("projNew").onclick = () => {
+    const name = prompt("Название нового майндмэпа:", "Новый майндмэп");
+    const p = createEmptyProject((name || "Новый майндмэп").trim());
+    rebuildProjectSelect();
+    setActiveProject(p.id);
+    showToast("Создано");
+  };
+
+  document.getElementById("projRename").onclick = () => {
+    if (!active) return;
+    const name = prompt("Новое название:", active.name || "Майндмэп");
+    if (!name) return;
+    active.name = name.trim();
+    active.updatedAt = nowTs();
+    saveStore();
+    rebuildProjectSelect();
+    showToast("Переименовано");
+  };
+
+  document.getElementById("projDup").onclick = () => {
+    if (!active) return;
+    const name = prompt("Название копии:", (active.name || "Майндмэп") + " (копия)");
+    const id = uid();
+    const clone = {
+      id,
+      name: (name || "Копия").trim(),
+      createdAt: nowTs(),
+      updatedAt: nowTs(),
+      data: JSON.parse(JSON.stringify(active.data))
+    };
+    store.projects[id] = clone;
+    store.activeId = id;
+    saveStore();
+    rebuildProjectSelect();
+    setActiveProject(id);
+    showToast("Дубликат создан");
+  };
+
+  document.getElementById("projDel").onclick = () => {
+    if (!active) return;
+    if (!confirm(`Удалить "${active.name}"?`)) return;
+
+    delete store.projects[active.id];
+    const ids = Object.keys(store.projects);
+    if (!ids.length){
+      createEmptyProject("Мой первый майндмэп");
+    } else {
+      store.activeId = ids[0];
+    }
+    saveStore();
+    rebuildProjectSelect();
+    setActiveProject(store.activeId);
+    showToast("Удалено");
   };
 
   document.getElementById("autoLayout").onclick = () => {
-    if (!state.nodes.length){ showToast("Нет узлов"); return; }
-    const root = state.nodes.find(n => !n.parentId) || state.nodes[0];
-    const r = svg.getBoundingClientRect();
+    if (!map.nodes.length){ showToast("Нет узлов"); return; }
+    const root = map.nodes.find(n => !n.parentId) || map.nodes[0];
+    const r = scene.getBoundingClientRect();
     const center = clientToWorld(r.left + r.width/2, r.top + r.height/2);
 
     root.x = center.x - root.w/2;
@@ -1012,45 +1239,234 @@
       k.y = y;
       y += 76;
     }
-    save(); render();
+    autosave();
+    renderAll();
     showToast("Авто-раскладка готова");
   };
 
+  document.getElementById("resetView").onclick = () => {
+    map.view = {x:24,y:24,k:1};
+    applyTransform();
+    positionCtx();
+    autosave();
+    showToast("Вид сброшен");
+  };
+
+  // ====== Export/Import ======
+  document.getElementById("exportOne").onclick = () => {
+    if (!active) return;
+    // Commit latest map into active first
+    commitMap();
+    const payload = {
+      kind: "mindmap_project",
+      version: 1,
+      project: store.projects[store.activeId]
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    const safe = (active.name || "mindmap").replace(/[^\w\d\-_.]+/g,"_");
+    a.download = safe + ".json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast("Экспортировано");
+  };
+
+  importOne.addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      try{
+        const obj = JSON.parse(fr.result);
+        if (!obj || obj.kind !== "mindmap_project" || !obj.project) throw new Error("bad");
+        const p = obj.project;
+        if (!p.id) p.id = uid();
+        p.data = normalizeMapData(p.data || {});
+        p.createdAt ||= nowTs();
+        p.updatedAt ||= nowTs();
+        store.projects[p.id] = p;
+        store.activeId = p.id;
+        saveStore();
+        rebuildProjectSelect();
+        setActiveProject(p.id);
+        showToast("Импортировано");
+      }catch(err){
+        showToast("Не удалось импортировать карту");
+      }
+    };
+    fr.readAsText(f);
+    e.target.value = "";
+  });
+
+  document.getElementById("exportAll").onclick = () => {
+    commitMap();
+    const payload = {
+      kind: "mindmap_store",
+      version: 1,
+      store
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "mindmaps_all.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    showToast("Экспорт всех готов");
+  };
+
+  importAll.addEventListener("change", (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    const fr = new FileReader();
+    fr.onload = () => {
+      try{
+        const obj = JSON.parse(fr.result);
+        if (!obj || obj.kind !== "mindmap_store" || !obj.store) throw new Error("bad");
+        const s = obj.store;
+        if (!s.projects || typeof s.projects !== "object") throw new Error("bad");
+        // normalize all
+        Object.values(s.projects).forEach(p => {
+          if (!p.id) p.id = uid();
+          p.name ||= "Майндмэп";
+          p.createdAt ||= nowTs();
+          p.updatedAt ||= nowTs();
+          p.data = normalizeMapData(p.data || {});
+        });
+        store = s;
+        if (!store.activeId || !store.projects[store.activeId]){
+          store.activeId = Object.keys(store.projects)[0];
+        }
+        saveStore();
+        rebuildProjectSelect();
+        setActiveProject(store.activeId);
+        showToast("Импорт всех выполнен");
+      }catch(err){
+        showToast("Не удалось импортировать все карты");
+      }
+    };
+    fr.readAsText(f);
+    e.target.value = "";
+  });
+
+  // ====== Shortcuts ======
   window.addEventListener("keydown", (e) => {
     const k = e.key.toLowerCase();
     if (k === "v") setTool("select");
     if (k === "h") setTool("hand");
     if (k === "n") setTool("node");
-    if (k === "s") setTool("sticky");
-    if (k === "t") setTool("text");
     if (k === "c") setTool("center");
 
     if (e.ctrlKey && e.key === "/"){
       e.preventDefault();
-      if (selectedNodeId) toggleCollapse(selectedNodeId);
+      if (selectedId) toggleCollapse(selectedId);
     }
-    if (e.key === "Tab" && selectedNodeId && !editingNodeId){
+
+    if (e.key === "Tab" && selectedId && !editingId){
       e.preventDefault();
-      addChildFrom(selectedNodeId);
+      addChildFrom(selectedId);
     }
-    if (e.key === "Enter" && selectedNodeId && !editingNodeId){
+    if (e.key === "Enter" && selectedId && !editingId){
       e.preventDefault();
-      addSiblingFrom(selectedNodeId);
+      addSiblingFrom(selectedId);
     }
-    if ((e.key === "Delete" || e.key === "Backspace") && selectedNodeId && !editingNodeId){
+    if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingId){
       e.preventDefault();
-      deleteSelected();
+      deleteSubtree(selectedId);
     }
   });
 
-  // init
-  const ok = load();
-  if (!ok){
-    state.view = {x:24,y:24,k:1};
-    addNode(260, 180, "Центральная идея", "🎯", PALETTE[0], "mind");
-  } else {
-    render();
-  }
+  // ====== Fix collapse dot data attribute & render refinement ======
+  // override renderNodes to mark dot for quick updates
+  const _renderNodes = renderNodes;
+  renderNodes = function(){
+    nodesLayer.innerHTML = "";
+    for (const n of map.nodes){
+      if (isHiddenByCollapse(n.id)) continue;
+
+      const div = document.createElement("div");
+      div.className = "node" + (n.id === selectedId ? " selected" : "");
+      div.style.left = n.x + "px";
+      div.style.top  = n.y + "px";
+      div.style.width = n.w + "px";
+      div.style.height = n.h + "px";
+      div.style.background = n.style?.fill || "rgba(255,255,255,.80)";
+      div.style.borderColor = n.style?.stroke || "rgba(11,19,36,.18)";
+      div.setAttribute("data-id", n.id);
+
+      const icon = document.createElement("div");
+      icon.className = "icon";
+      icon.textContent = n.icon || "";
+
+      const text = document.createElement("div");
+      text.className = "text";
+      text.textContent = n.text || "";
+
+      div.appendChild(icon);
+      div.appendChild(text);
+
+      div.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (editingId) return;
+
+        selectedId = n.id;
+        renderSelectionOnly();
+        positionCtx();
+
+        drag = {
+          kind: "node",
+          pointerId: e.pointerId,
+          sx: e.clientX, sy: e.clientY,
+          moved: false,
+          baseX: n.x, baseY: n.y
+        };
+        div.setPointerCapture(e.pointerId);
+      });
+
+      div.addEventListener("pointerup", (e) => {
+        e.stopPropagation();
+        if (editingId) return;
+        if (drag && drag.kind === "node" && drag.pointerId === e.pointerId && drag.moved) return;
+
+        const now = Date.now();
+        const same = (tap.id === n.id) && (now - tap.t <= TAP_WINDOW);
+        tap.id = n.id;
+        tap.t = now;
+        tap.count = same ? (tap.count + 1) : 1;
+
+        if (tap.timer) clearTimeout(tap.timer);
+        tap.timer = setTimeout(() => {
+          if (tap.id !== n.id) return;
+          if (tap.count === 2) addChildFrom(n.id);
+          else if (tap.count >= 3) beginEdit(n.id);
+          tap.id = null; tap.count = 0; tap.timer = null;
+        }, TAP_WINDOW + 30);
+      });
+
+      nodesLayer.appendChild(div);
+
+      const kids = childrenOf(n.id);
+      if (kids.length){
+        const dot = document.createElement("div");
+        dot.className = "collapseDot";
+        dot.setAttribute("data-dot-for", n.id);
+        dot.style.left = (n.x + n.w + 10) + "px";
+        dot.style.top  = (n.y + n.h/2 - 11) + "px";
+        dot.textContent = n.collapsed ? "+" : "–";
+        dot.title = n.collapsed ? "Развернуть" : "Свернуть";
+        dot.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleCollapse(n.id);
+        });
+        nodesLayer.appendChild(dot);
+      }
+    }
+  };
+
+  // ====== Start ======
+  init();
 })();
 </script>
 </body>
