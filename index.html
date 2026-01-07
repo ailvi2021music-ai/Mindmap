@@ -3,18 +3,23 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Mini MindMap (v5)</title>
+  <title>MindMap Pro Lite (v6)</title>
   <meta name="theme-color" content="#f3f7ff" />
   <style>
     :root{
       --text:#0b1324;
       --muted:rgba(11,19,36,.60);
-      --panel:rgba(255,255,255,.78);
+      --panel:rgba(255,255,255,.82);
       --stroke:rgba(11,19,36,.12);
-      --shadow: 0 18px 60px rgba(10,20,40,.16);
+      --shadow: 0 18px 60px rgba(10,20,40,.14);
       --grid:rgba(10,20,40,.06);
-      --nodeRadius:16px;
+      --radius:16px;
+      --tool:rgba(20,28,40,.88);
+      --toolText:rgba(255,255,255,.92);
+      --toolStroke:rgba(255,255,255,.10);
+      --accent:#59c3ff;
     }
+
     *{ box-sizing:border-box; }
     html,body{
       height:100%;
@@ -26,14 +31,15 @@
         radial-gradient(900px 650px at 85% 20%, rgba(255,92,122,.20), transparent 60%),
         radial-gradient(1000px 700px at 55% 95%, rgba(60,224,122,.22), transparent 60%),
         linear-gradient(180deg, #f7fbff, #eef4ff 55%, #f8fbff);
+      overflow:hidden;
     }
 
     .app{ height:100%; display:flex; flex-direction:column; }
 
     header{
       display:flex; gap:10px; align-items:center; padding:12px 14px;
-      position:sticky; top:0; z-index:20;
-      background: rgba(255,255,255,.70);
+      position:sticky; top:0; z-index:30;
+      background: rgba(255,255,255,.72);
       border-bottom:1px solid var(--stroke);
       backdrop-filter: blur(10px);
       flex-wrap:wrap;
@@ -56,6 +62,7 @@
     .sep{ width:1px; height:26px; background:var(--stroke); margin:0 2px; }
 
     .stageWrap{ flex:1; position:relative; overflow:hidden; }
+
     .stageWrap::before{
       content:""; position:absolute; inset:0;
       background:
@@ -66,15 +73,96 @@
       pointer-events:none;
     }
 
-    /* iOS/Safari fix */
     svg{
-      position:absolute;
-      inset:0;
-      width:100%;
-      height:100%;
+      position:absolute; inset:0;
+      width:100%; height:100%;
       display:block;
-      touch-action:none; /* мы сами обрабатываем pan/zoom */
+      touch-action:none;
       z-index:1;
+    }
+
+    /* Left toolbar */
+    .leftbar{
+      position:absolute;
+      left:14px; top:14px;
+      z-index:25;
+      background: rgba(255,255,255,.82);
+      border:1px solid var(--stroke);
+      border-radius:18px;
+      box-shadow: var(--shadow);
+      padding:10px;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      backdrop-filter: blur(10px);
+    }
+    .toolbtn{
+      width:44px; height:44px;
+      border-radius:14px;
+      border:1px solid rgba(11,19,36,.10);
+      background: rgba(255,255,255,.78);
+      cursor:pointer;
+      display:flex; align-items:center; justify-content:center;
+      user-select:none;
+    }
+    .toolbtn:hover{ border-color: rgba(89,195,255,.45); }
+    .toolbtn.active{
+      border-color: rgba(89,195,255,.8);
+      box-shadow: 0 0 0 3px rgba(89,195,255,.18) inset;
+    }
+    .toolbtn span{ font-size:18px; }
+    .toolhint{
+      position:absolute;
+      left:72px;
+      background: rgba(20,28,40,.88);
+      color: rgba(255,255,255,.92);
+      border:1px solid rgba(255,255,255,.10);
+      padding:8px 10px;
+      border-radius:12px;
+      box-shadow: var(--shadow);
+      white-space:nowrap;
+      opacity:0;
+      transform: translateY(-4px);
+      pointer-events:none;
+      transition: .12s ease;
+      z-index:60;
+    }
+    .toolbtn:hover .toolhint{
+      opacity:1;
+      transform: translateY(0px);
+    }
+
+    /* Context toolbar (floating) */
+    .ctx{
+      position:absolute;
+      z-index:50;
+      background: var(--tool);
+      color: var(--toolText);
+      border:1px solid var(--toolStroke);
+      border-radius:14px;
+      box-shadow: var(--shadow);
+      display:flex;
+      gap:6px;
+      padding:8px;
+      align-items:center;
+      backdrop-filter: blur(10px);
+      user-select:none;
+    }
+    .ctx .cbtn{
+      width:34px; height:34px;
+      display:flex; align-items:center; justify-content:center;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.06);
+      cursor:pointer;
+      font-size:16px;
+    }
+    .ctx .cbtn:hover{ border-color: rgba(89,195,255,.50); }
+    .ctx .csep{ width:1px; height:22px; background: rgba(255,255,255,.12); margin:0 2px; }
+    .ctx .label{
+      font-size:12px;
+      color: rgba(255,255,255,.70);
+      padding:0 6px 0 2px;
     }
 
     .link{
@@ -82,19 +170,21 @@
       stroke-width: 2.2;
       fill: none;
     }
-    .link.selected{ stroke: rgba(255,92,122,.70); }
 
     .node{
-      filter: drop-shadow(0 16px 26px rgba(10,20,40,.16));
+      filter: drop-shadow(0 16px 26px rgba(10,20,40,.14));
       cursor: grab;
-    }
-    .node rect{
-      rx: var(--nodeRadius);
-      ry: var(--nodeRadius);
     }
     .node.selected rect{
       stroke: rgba(89,195,255,.95) !important;
-      stroke-width: 2.4 !important;
+      stroke-width: 2.6 !important;
+    }
+    .node rect{ rx: var(--radius); ry: var(--radius); }
+
+    /* +/- toggle button */
+    .toggleDot{
+      filter: drop-shadow(0 10px 18px rgba(10,20,40,.18));
+      cursor:pointer;
     }
 
     .toast{
@@ -108,14 +198,32 @@
       opacity:0; pointer-events:none;
       transition: opacity .18s ease;
       max-width:min(720px, calc(100% - 24px));
-      z-index:30;
+      z-index:40;
     }
     .toast.show{ opacity:1; }
+
+    .searchBox{
+      margin-left:auto;
+      display:flex; gap:8px; align-items:center;
+    }
+    .searchBox input{
+      width:min(320px, 48vw);
+      border-radius:12px;
+      border:1px solid var(--stroke);
+      padding:10px 12px;
+      outline:none;
+      background: rgba(255,255,255,.75);
+    }
+    .searchBox input:focus{
+      border-color: rgba(89,195,255,.7);
+      box-shadow: 0 0 0 3px rgba(89,195,255,.18);
+    }
 
     input[type="file"]{ display:none; }
 
     @media (max-width: 560px){
       .brand span{ display:none; }
+      .searchBox input{ width: 52vw; }
     }
   </style>
 </head>
@@ -123,17 +231,13 @@
 <div class="app">
   <header>
     <div class="brand">
-      <b>Mini MindMap</b>
-      <span>Двойной клик по узлу — дочерний. Тройной клик — редактирование текста внутри ячейки.</span>
+      <b>MindMap Pro Lite</b>
+      <span>Двойной клик по узлу — дочерний • Тройной клик — редактирование внутри узла • Ctrl+/ — свернуть/развернуть</span>
     </div>
 
     <button class="btn primary" id="addRoot">+ Центр</button>
-    <button class="btn" id="addChild">+ Дочерний</button>
     <button class="btn" id="autoLayout">Авто-раскладка</button>
-
-    <div class="sep"></div>
-
-    <button class="btn danger" id="del">Удалить</button>
+    <button class="btn" id="resetView">Сброс вида</button>
 
     <div class="sep"></div>
 
@@ -141,56 +245,85 @@
     <label class="btn" for="importFile">Импорт</label>
     <input id="importFile" type="file" accept="application/json" />
 
-    <div class="sep"></div>
-
-    <button class="btn" id="resetView">Сброс вида</button>
     <button class="btn danger" id="clearAll">Очистить</button>
+
+    <div class="searchBox">
+      <input id="search" placeholder="Поиск узлов (Ctrl+F)..." />
+      <button class="btn" id="findNext">Найти</button>
+    </div>
   </header>
 
   <div class="stageWrap" id="wrap">
-    <svg id="svg" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"></svg>
+    <div class="leftbar" id="leftbar">
+      <div class="toolbtn active" data-tool="select"><span>🖱️</span><div class="toolhint">Select (V)</div></div>
+      <div class="toolbtn" data-tool="hand"><span>✋</span><div class="toolhint">Hand/Pan (H)</div></div>
+      <div class="toolbtn" data-tool="node"><span>➕</span><div class="toolhint">Add node (N)</div></div>
+      <div class="toolbtn" data-tool="sticky"><span>🗒️</span><div class="toolhint">Sticky note (S)</div></div>
+      <div class="toolbtn" data-tool="text"><span>🔤</span><div class="toolhint">Text label (T)</div></div>
+      <div class="toolbtn" data-tool="center"><span>🎯</span><div class="toolhint">Center on selection (C)</div></div>
+    </div>
+
+    <div class="ctx" id="ctx" style="display:none;">
+      <div class="label">Узел</div>
+      <div class="cbtn" id="ctxChild" title="Дочерний (Tab)">↳</div>
+      <div class="cbtn" id="ctxSibling" title="Соседний (Enter)">↦</div>
+      <div class="cbtn" id="ctxRename" title="Переименовать (Triple click)">✏️</div>
+      <div class="csep"></div>
+      <div class="cbtn" id="ctxColor" title="Цвет">🎨</div>
+      <div class="cbtn" id="ctxIcon" title="Иконка">😊</div>
+      <div class="cbtn" id="ctxCollapse" title="Свернуть/развернуть (Ctrl+/)">⤵️</div>
+      <div class="csep"></div>
+      <div class="cbtn" id="ctxSpark" title="✨ Быстро добавить 5 идей">✨</div>
+      <div class="cbtn" id="ctxDelete" title="Удалить (Del)">🗑️</div>
+      <div class="cbtn" id="ctxClose" title="Закрыть">✖</div>
+    </div>
+
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
     <div class="toast" id="toast"></div>
   </div>
 </div>
 
 <script>
 (() => {
-  const STORAGE_KEY = "mini_mindmap_v5";
-  const MIGRATE_KEYS = ["mini_mindmap_v4","mini_mindmap_v3","mini_mindmap_v2","mini_mindmap_v1"];
+  const STORAGE_KEY = "mindmap_pro_lite_v6";
+  const MIGRATE_KEYS = ["mini_mindmap_v5","mini_mindmap_v4","mini_mindmap_v3","mini_mindmap_v2","mini_mindmap_v1"];
 
   const svg = document.getElementById("svg");
   const wrap = document.getElementById("wrap");
   const toast = document.getElementById("toast");
+  const ctx = document.getElementById("ctx");
 
   const PALETTE = [
-    {name:"Sky",    fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.60)"},
-    {name:"Rose",   fill:"rgba(255,92,122,.18)", stroke:"rgba(230,70,95,.62)"},
-    {name:"Lime",   fill:"rgba(60,224,122,.18)", stroke:"rgba(30,170,85,.60)"},
-    {name:"Amber",  fill:"rgba(255,209,102,.20)", stroke:"rgba(205,150,40,.62)"},
-    {name:"Violet", fill:"rgba(176,122,255,.18)", stroke:"rgba(135,90,210,.62)"},
+    {name:"Sky",    fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.62)"},
+    {name:"Rose",   fill:"rgba(255,92,122,.18)", stroke:"rgba(230,70,95,.64)"},
+    {name:"Lime",   fill:"rgba(60,224,122,.18)", stroke:"rgba(30,170,85,.62)"},
+    {name:"Amber",  fill:"rgba(255,209,102,.20)", stroke:"rgba(205,150,40,.64)"},
+    {name:"Violet", fill:"rgba(176,122,255,.18)", stroke:"rgba(135,90,210,.64)"},
     {name:"Slate",  fill:"rgba(255,255,255,.80)", stroke:"rgba(11,19,36,.18)"}
   ];
 
+  const ICONS = ["💡","✅","🎯","📌","🧠","⚡","🧩","🔥","📎","🔗","⭐","📝","📚","🧪","🐞","🧭"];
+
+  let tool = "select"; // select | hand | node | sticky | text | center
+
   let state = {
-    nodes: [],   // {id,x,y,w,h,text,icon,style:{fill,stroke}, childColorNext}
-    links: [],   // {id,a,b}
+    nodes: [], // {id,x,y,w,h,text,icon,style:{fill,stroke}, childColorNext, type, collapsed}
+    links: [], // {id,a,b}
     view: {x:24,y:24,k:1}
   };
 
   let selectedNodeId = null;
   let selectedLinkId = null;
+  let editingNodeId = null;
 
   // drag + gestures
   let drag = null; // {type:'node'|'pan', pointerId, sx,sy, moved, base:{x,y} or ox,oy}
-  const pointers = new Map(); // pointerId -> {x,y}
-  let pinch = null; // {dist0,k0}
+  const pointers = new Map();
+  let pinch = null;
   const DRAG_THRESHOLD = 6;
 
-  // edit state
-  let editingNodeId = null;
-
-  // double vs triple click resolution
-  const pendingDouble = new Map(); // nodeId -> timerId
+  // dbl vs triple
+  const pendingDouble = new Map(); // nodeId -> timer
 
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
 
@@ -202,13 +335,76 @@
   }
 
   function getNode(id){ return state.nodes.find(n => n.id === id); }
-  function getLink(id){ return state.links.find(l => l.id === id); }
+
+  // measurement: width + height up to 4 lines
+  const measurer = document.createElement("canvas");
+  const mctx = measurer.getContext("2d");
+  const FONT = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
+
+  function wrapLines(text, maxWidth){
+    mctx.font = FONT;
+    const words = (text || "").trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return ["Идея"];
+
+    const lines = [];
+    let cur = words[0];
+    for (let i=1;i<words.length;i++){
+      const test = cur + " " + words[i];
+      if (mctx.measureText(test).width <= maxWidth){
+        cur = test;
+      } else {
+        lines.push(cur);
+        cur = words[i];
+      }
+    }
+    lines.push(cur);
+    return lines;
+  }
+
+  function measureNode(text){
+    mctx.font = FONT;
+    const t = (text || "").trim() || "Идея";
+
+    const minW = 150;
+    const maxW = 360;
+
+    // icon(20) + gap(10) + padding(24) = 54 reserved
+    // so text max area depends on w we choose; iterative simple approach:
+    // Start from measured single line width
+    const raw = mctx.measureText(t).width;
+    let w = Math.max(minW, Math.min(maxW, Math.ceil(raw + 72)));
+    let textMax = w - 72;
+    let lines = wrapLines(t, textMax);
+    lines = lines.slice(0, 4);
+
+    // if it wraps too much, try widening until maxW (improves aesthetics)
+    while (lines.length >= 3 && w < maxW){
+      w = Math.min(maxW, w + 24);
+      textMax = w - 72;
+      lines = wrapLines(t, textMax).slice(0, 4);
+      if (lines.length <= 2) break;
+    }
+
+    const lineH = 17;
+    const baseH = 24; // padding+icon vertical feel
+    const h = Math.max(58, baseH + lines.length * lineH + 14);
+
+    return {w, h, lines};
+  }
 
   function clientToWorld(cx, cy){
     const r = svg.getBoundingClientRect();
     return {
       x: (cx - r.left - state.view.x) / state.view.k,
       y: (cy - r.top  - state.view.y) / state.view.k
+    };
+  }
+
+  function worldToClient(wx, wy){
+    const r = svg.getBoundingClientRect();
+    return {
+      x: r.left + state.view.x + wx * state.view.k,
+      y: r.top  + state.view.y + wy * state.view.k
     };
   }
 
@@ -220,37 +416,17 @@
   }
   function fitDefault(){ setView(24,24,1); }
 
-  // ---------- text measurement (real width) ----------
-  const measurer = document.createElement("canvas");
-  const mctx = measurer.getContext("2d");
-
-  function measureNode(text){
-    const font = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
-    mctx.font = font;
-
-    const t = (text || "").trim() || "Идея";
-    // icon(20) + gap(10) + padding L/R(24) + small safety(18)
-    const iconBlock = 20 + 10;
-    const padding = 24;
-    const safety = 18;
-
-    const raw = mctx.measureText(t).width;
-    const minW = 150;
-    const maxW = 360;
-    const w = Math.max(minW, Math.min(maxW, Math.ceil(raw + iconBlock + padding + safety)));
-    const h = 58;
-    return {w,h};
-  }
-
-  function addNode(x, y, text="Новая идея", icon="💡", style=PALETTE[0]){
-    const {w,h} = measureNode(text);
+  function addNode(x, y, text="Новая идея", icon="💡", style=PALETTE[0], type="mind"){
+    const m = measureNode(text);
     const id = uid();
     state.nodes.push({
-      id, x, y, w, h,
+      id, x, y, w:m.w, h:m.h,
       text,
       icon: (icon||"").trim(),
       style: {fill: style.fill, stroke: style.stroke},
-      childColorNext: 0
+      childColorNext: 0,
+      type,
+      collapsed: false
     });
     selectedNodeId = id;
     selectedLinkId = null;
@@ -266,7 +442,65 @@
     save(); render();
   }
 
-  // line endpoints from edge, not center
+  function childrenOf(id){
+    // directed by creation: we store links undirected, but treat parent->child by x-position heuristic is unreliable.
+    // Instead: first link created in addChildFrom is parent->child, but we don't store direction.
+    // We'll store direction via node.parentId for mind nodes.
+    const out = [];
+    for (const n of state.nodes){
+      if (n.parentId === id) out.push(n.id);
+    }
+    return out;
+  }
+
+  function subtreeIds(rootId){
+    const ids = [];
+    const stack = [rootId];
+    while(stack.length){
+      const v = stack.pop();
+      ids.push(v);
+      for (const c of childrenOf(v)) stack.push(c);
+    }
+    return ids;
+  }
+
+  function addChildFrom(parentId){
+    const parent = getNode(parentId);
+    if (!parent) return null;
+
+    const idx = ((parent.childColorNext || 0) + 1) % PALETTE.length;
+    parent.childColorNext = (parent.childColorNext || 0) + 1;
+    const style = PALETTE[idx];
+
+    const x = parent.x + parent.w + 140;
+    const y = parent.y + (Math.random()*70 - 35);
+
+    const childId = addNode(x, y, "Дочерняя идея", "✅", style, "mind");
+    const child = getNode(childId);
+    child.parentId = parentId;
+
+    addLink(parentId, childId);
+    return childId;
+  }
+
+  function addSiblingFrom(nodeId){
+    const n = getNode(nodeId);
+    if (!n) return null;
+    const parentId = n.parentId || null;
+    const base = parentId ? getNode(parentId) : n;
+    const style = n.style ? {fill:n.style.fill, stroke:n.style.stroke} : PALETTE[0];
+
+    const x = n.x;
+    const y = n.y + n.h + 18;
+
+    const sibId = addNode(x, y, "Новая идея", n.icon || "💡", style, n.type || "mind");
+    const sib = getNode(sibId);
+    sib.parentId = parentId;
+
+    if (parentId) addLink(parentId, sibId);
+    return sibId;
+  }
+
   function edgePoint(fromNode, toNode){
     const cx = fromNode.x + fromNode.w/2;
     const cy = fromNode.y + fromNode.h/2;
@@ -283,31 +517,22 @@
     return { x: cx + dx * t, y: cy + dy * t };
   }
 
-  function addChildFrom(parentId){
-    const parent = getNode(parentId);
-    if (!parent) return null;
-
-    const idx = ((parent.childColorNext || 0) + 1) % PALETTE.length;
-    parent.childColorNext = (parent.childColorNext || 0) + 1;
-    const style = PALETTE[idx];
-
-    const x = parent.x + parent.w + 140;
-    const y = parent.y + (Math.random()*70 - 35);
-
-    const childId = addNode(x, y, "Дочерняя идея", "✅", style);
-    addLink(parentId, childId);
-    return childId;
+  function isHiddenByCollapse(nodeId){
+    // if any ancestor is collapsed -> hidden
+    let cur = getNode(nodeId);
+    while(cur && cur.parentId){
+      const p = getNode(cur.parentId);
+      if (p && p.collapsed) return true;
+      cur = p;
+    }
+    return false;
   }
 
-  // ---------- inline edit ----------
-  function stopInlineEdit(saveChanges){
-    if (!editingNodeId) return;
-    const n = getNode(editingNodeId);
-    if (!n){ editingNodeId = null; return; }
-
-    // after render, textDiv disappears; we save on blur events before render,
-    // but this is a safety for ESC path.
-    editingNodeId = null;
+  function toggleCollapse(nodeId){
+    const n = getNode(nodeId);
+    if (!n) return;
+    n.collapsed = !n.collapsed;
+    save(); render();
   }
 
   function beginInlineEdit(nodeId, textDiv){
@@ -325,11 +550,9 @@
     textDiv.style.userSelect = "text";
     textDiv.style.webkitUserSelect = "text";
     textDiv.style.outline = "none";
-    textDiv.style.pointerEvents = "auto";
 
     textDiv.focus();
 
-    // caret end
     const range = document.createRange();
     range.selectNodeContents(textDiv);
     range.collapse(false);
@@ -344,8 +567,8 @@
       if (save){
         const val = (textDiv.textContent || "").trim();
         n.text = val || "Идея";
-        const {w,h} = measureNode(n.text);
-        n.w = w; n.h = h;
+        const m = measureNode(n.text);
+        n.w = m.w; n.h = m.h;
       } else {
         textDiv.textContent = n.text || "Идея";
       }
@@ -376,14 +599,95 @@
     textDiv.addEventListener("blur", onBlur);
   }
 
-  // ---------- SVG element helpers ----------
+  function save(){
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
+  }
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw){
+        const obj = JSON.parse(raw);
+        if (obj && Array.isArray(obj.nodes) && Array.isArray(obj.links)){
+          state = obj;
+          state.view ||= {x:24,y:24,k:1};
+          // normalize sizing
+          state.nodes.forEach(n => {
+            n.text ||= "Идея";
+            const m = measureNode(n.text);
+            n.w = m.w; n.h = m.h;
+            n.icon = (typeof n.icon === "string") ? n.icon : "💡";
+            if (!n.style) n.style = {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke};
+            n.childColorNext = n.childColorNext || 0;
+            n.type ||= "mind";
+            n.collapsed = !!n.collapsed;
+          });
+          return true;
+        }
+      }
+
+      for (const k of MIGRATE_KEYS){
+        const oldRaw = localStorage.getItem(k);
+        if (!oldRaw) continue;
+        const old = JSON.parse(oldRaw);
+        if (!old || !Array.isArray(old.nodes) || !Array.isArray(old.links)) continue;
+
+        state.nodes = old.nodes.map(n => {
+          const text = n.text || "Идея";
+          const m = measureNode(text);
+          return {
+            id: n.id || uid(),
+            x: Number(n.x)||0,
+            y: Number(n.y)||0,
+            w: m.w, h: m.h,
+            text,
+            icon: (typeof n.icon === "string") ? n.icon : "💡",
+            style: n.style ? n.style : {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke},
+            childColorNext: n.childColorNext || 0,
+            type: "mind",
+            collapsed: false,
+            parentId: n.parentId || null
+          };
+        });
+
+        // try best-effort: keep links
+        state.links = old.links.map(l => ({id: l.id || uid(), a:l.a, b:l.b})).filter(l => l.a && l.b);
+        state.view = old.view || {x:24,y:24,k:1};
+        save();
+        return true;
+      }
+
+      return false;
+    }catch(e){
+      return false;
+    }
+  }
+
   function el(name, attrs={}){
     const x = document.createElementNS("http://www.w3.org/2000/svg", name);
     for (const [k,v] of Object.entries(attrs)) x.setAttribute(k, String(v));
     return x;
   }
 
-  // ---------- render ----------
+  function positionContextToolbar(){
+    if (!selectedNodeId) { ctx.style.display = "none"; return; }
+    const n = getNode(selectedNodeId);
+    if (!n || isHiddenByCollapse(n.id)) { ctx.style.display = "none"; return; }
+
+    const tl = worldToClient(n.x, n.y);
+    // place above node
+    const left = tl.x + (n.w * state.view.k)/2 - 180;
+    const top  = tl.y - 54;
+
+    ctx.style.display = "flex";
+    ctx.style.left = Math.max(12, Math.min(window.innerWidth - 380, left)) + "px";
+    ctx.style.top  = Math.max(76, top) + "px";
+
+    // collapse icon toggle
+    const kids = childrenOf(n.id);
+    document.getElementById("ctxCollapse").style.opacity = kids.length ? "1" : ".45";
+  }
+
   function render(){
     while(svg.firstChild) svg.removeChild(svg.firstChild);
 
@@ -391,9 +695,14 @@
     svg.appendChild(gView);
 
     // links
-    state.links.forEach(l => {
+    for (const l of state.links){
       const a = getNode(l.a), b = getNode(l.b);
-      if (!a || !b) return;
+      if (!a || !b) continue;
+
+      // if either hidden by collapse => hide link
+      if (isHiddenByCollapse(a.id) || isHiddenByCollapse(b.id)) continue;
+
+      // if parent is collapsed hide descendants links automatically by above check
 
       const p1 = edgePoint(a, b);
       const p2 = edgePoint(b, a);
@@ -403,25 +712,16 @@
       const c2x = p1.x + dx * 0.66;
 
       const d = `M ${p1.x} ${p1.y} C ${c1x} ${p1.y}, ${c2x} ${p2.y}, ${p2.x} ${p2.y}`;
-      const path = el("path", {
-        d,
-        class: "link" + (l.id === selectedLinkId ? " selected" : ""),
-        "data-link-id": l.id
-      });
-      path.addEventListener("pointerdown", (e) => {
-        e.stopPropagation();
-        if (editingNodeId) return;
-        selectedLinkId = l.id;
-        selectedNodeId = null;
-        render();
-      });
+
+      const path = el("path", { d, class:"link" });
       gView.appendChild(path);
-    });
+    }
 
     // nodes
-    state.nodes.forEach(n => {
-      const isSel = (n.id === selectedNodeId);
+    for (const n of state.nodes){
+      if (isHiddenByCollapse(n.id)) continue;
 
+      const isSel = (n.id === selectedNodeId);
       const gn = el("g", {
         class: "node" + (isSel ? " selected" : ""),
         transform: `translate(${n.x},${n.y})`,
@@ -429,20 +729,20 @@
       });
 
       const rect = el("rect", {
-        width: n.w, height: n.h,
-        style: `fill:${n.style?.fill || "rgba(255,255,255,.8)"};stroke:${n.style?.stroke || "rgba(11,19,36,.18)"};stroke-width:1.2;`
+        width:n.w, height:n.h,
+        style:`fill:${n.style?.fill || "rgba(255,255,255,.8)"};stroke:${n.style?.stroke || "rgba(11,19,36,.18)"};stroke-width:1.2;`
       });
       gn.appendChild(rect);
 
-      const fo = el("foreignObject", { x: 0, y: 0, width: n.w, height: n.h });
+      const fo = el("foreignObject", { x:0, y:0, width:n.w, height:n.h });
       const div = document.createElement("div");
       div.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
       div.style.cssText = `
         width:${n.w}px; height:${n.h}px;
-        display:flex; align-items:center; gap:10px;
+        display:flex; align-items:flex-start; gap:10px;
         padding: 10px 12px;
         color: rgba(11,19,36,.95);
-        font: 14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        font: ${FONT};
         overflow:hidden;
         user-select:none;
       `;
@@ -450,14 +750,11 @@
       const icon = document.createElement("div");
       icon.style.cssText = `
         flex:0 0 auto;
-        width:20px;
-        height:20px;
-        font-size:18px;
-        line-height: 1;
-        display:flex;
-        align-items:center;
-        justify-content:center;
+        width:20px; height:20px;
+        font-size:18px; line-height: 1;
+        display:flex; align-items:center; justify-content:center;
         overflow: visible;
+        margin-top: 1px;
       `;
       icon.textContent = n.icon || "";
 
@@ -465,14 +762,13 @@
       text.style.cssText = `
         flex:1 1 auto;
         overflow:hidden;
-        display:-webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
         word-break: break-word;
         line-height: 1.15;
-        padding-bottom: 2px;
         cursor: default;
-        pointer-events: auto;
+        pointer-events:auto;
+        display:-webkit-box;
+        -webkit-line-clamp: 4;
+        -webkit-box-orient: vertical;
       `;
       text.textContent = n.text || "";
 
@@ -481,7 +777,7 @@
       fo.appendChild(div);
       gn.appendChild(fo);
 
-      // pointerdown: select + maybe start drag later (threshold)
+      // selection + drag threshold
       gn.addEventListener("pointerdown", (e) => {
         e.stopPropagation();
         if (editingNodeId) return;
@@ -489,26 +785,25 @@
         selectedNodeId = n.id;
         selectedLinkId = null;
         render();
+        positionContextToolbar();
 
-        drag = {
-          type: "node",
-          pointerId: e.pointerId,
-          sx: e.clientX, sy: e.clientY,
-          moved: false,
-          base: {x: n.x, y: n.y}
-        };
+        if (tool === "hand") {
+          drag = { type:"pan", pointerId:e.pointerId, sx:e.clientX, sy:e.clientY, moved:false, ox:state.view.x, oy:state.view.y };
+          svg.setPointerCapture(e.pointerId);
+          return;
+        }
+
+        drag = { type:"node", pointerId:e.pointerId, sx:e.clientX, sy:e.clientY, moved:false, base:{x:n.x, y:n.y} };
         svg.setPointerCapture(e.pointerId);
       });
 
-      // click: reliable click counting (detail=1/2/3)
+      // click: double => child, triple => rename
       gn.addEventListener("click", (e) => {
         e.stopPropagation();
         if (editingNodeId) return;
-        // ignore clicks right after drag
         if (drag && drag.type === "node" && drag.moved) return;
 
         if (e.detail === 2){
-          // schedule child; if a 3rd click comes quickly, we cancel and rename instead
           const prev = pendingDouble.get(n.id);
           if (prev) clearTimeout(prev);
 
@@ -516,8 +811,8 @@
             pendingDouble.delete(n.id);
             const childId = addChildFrom(n.id);
             selectedNodeId = childId;
-            selectedLinkId = null;
             render();
+            positionContextToolbar();
           }, 240);
 
           pendingDouble.set(n.id, tid);
@@ -529,10 +824,39 @@
       });
 
       gView.appendChild(gn);
-    });
+
+      // +/- collapse dot if has children
+      const kids = childrenOf(n.id);
+      if (kids.length){
+        const dotX = n.x + n.w + 10;
+        const dotY = n.y + n.h/2 - 10;
+
+        const gDot = el("g", { class:"toggleDot", transform:`translate(${dotX},${dotY})` });
+        const circle = el("circle", {
+          cx:10, cy:10, r:10,
+          style:`fill: rgba(255,255,255,.92); stroke: rgba(11,19,36,.16); stroke-width:1;`
+        });
+        const sign = el("text", {
+          x:10, y:14,
+          "text-anchor":"middle",
+          style:`font: 14px system-ui; fill: rgba(11,19,36,.80);`
+        });
+        sign.textContent = n.collapsed ? "+" : "–";
+        gDot.appendChild(circle);
+        gDot.appendChild(sign);
+        gDot.addEventListener("pointerdown", (e) => {
+          e.stopPropagation();
+          toggleCollapse(n.id);
+          positionContextToolbar();
+        });
+        gView.appendChild(gDot);
+      }
+    }
+
+    positionContextToolbar();
   }
 
-  // ---------- background pan + pinch ----------
+  // background interactions (pan + pinch)
   svg.addEventListener("pointerdown", (e) => {
     pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
 
@@ -544,32 +868,29 @@
       return;
     }
 
-    // if empty area: start pan
     const nodeId = findNodeFromEvent(e);
-    const linkId = findLinkFromEvent(e);
-    if (!nodeId && !linkId){
-      if (editingNodeId) stopInlineEdit(true);
+    if (!nodeId){
+      // empty space
+      if (tool === "node" || tool === "sticky" || tool === "text"){
+        const p = clientToWorld(e.clientX, e.clientY);
+        if (tool === "node") addNode(p.x-90, p.y-30, "Новая идея", "💡", PALETTE[0], "mind");
+        if (tool === "sticky") addNode(p.x-90, p.y-30, "Заметка", "🗒️", PALETTE[5], "sticky");
+        if (tool === "text") addNode(p.x-90, p.y-30, "Текст", "🔤", PALETTE[5], "text");
+        return;
+      }
+
       selectedNodeId = null;
       selectedLinkId = null;
       render();
 
-      drag = {
-        type:"pan",
-        pointerId: e.pointerId,
-        sx:e.clientX, sy:e.clientY,
-        moved:false,
-        ox: state.view.x, oy: state.view.y
-      };
+      drag = { type:"pan", pointerId:e.pointerId, sx:e.clientX, sy:e.clientY, moved:false, ox:state.view.x, oy:state.view.y };
       svg.setPointerCapture(e.pointerId);
     }
   });
 
   svg.addEventListener("pointermove", (e) => {
-    if (pointers.has(e.pointerId)){
-      pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
-    }
+    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
 
-    // pinch
     if (pointers.size === 2 && pinch){
       const pts = [...pointers.values()];
       const dx = pts[1].x - pts[0].x;
@@ -594,27 +915,23 @@
 
     if (!drag || drag.pointerId !== e.pointerId) return;
 
-    const dxClient = e.clientX - drag.sx;
-    const dyClient = e.clientY - drag.sy;
-    const dist = Math.hypot(dxClient, dyClient);
-
-    if (!drag.moved && dist > DRAG_THRESHOLD){
-      drag.moved = true;
-    }
+    const dxC = e.clientX - drag.sx;
+    const dyC = e.clientY - drag.sy;
+    const dist = Math.hypot(dxC, dyC);
+    if (!drag.moved && dist > DRAG_THRESHOLD) drag.moved = true;
     if (!drag.moved) return;
 
     if (drag.type === "node"){
       const n = getNode(selectedNodeId);
       if (!n) return;
-      n.x = drag.base.x + dxClient / state.view.k;
-      n.y = drag.base.y + dyClient / state.view.k;
+      n.x = drag.base.x + dxC / state.view.k;
+      n.y = drag.base.y + dyC / state.view.k;
       render();
       return;
     }
-
     if (drag.type === "pan"){
-      state.view.x = drag.ox + dxClient;
-      state.view.y = drag.oy + dyClient;
+      state.view.x = drag.ox + dxC;
+      state.view.y = drag.oy + dyC;
       render();
       return;
     }
@@ -632,13 +949,7 @@
     }
   });
 
-  svg.addEventListener("pointercancel", (e) => {
-    pointers.delete(e.pointerId);
-    if (pointers.size < 2) pinch = null;
-    drag = null;
-  });
-
-  // wheel zoom (desktop)
+  // wheel zoom
   wrap.addEventListener("wheel", (e) => {
     e.preventDefault();
     const delta = Math.sign(e.deltaY);
@@ -658,12 +969,12 @@
     render(); save();
   }, {passive:false});
 
-  // dblclick empty => new node (для ПК)
+  // dblclick empty => new node (desktop)
   svg.addEventListener("dblclick", (e) => {
     const nodeId = findNodeFromEvent(e);
     if (nodeId) return;
     const p = clientToWorld(e.clientX, e.clientY);
-    addNode(p.x - 90, p.y - 29, "Новая идея", "💡", PALETTE[0]);
+    addNode(p.x-90, p.y-30, "Новая идея", "💡", PALETTE[0], "mind");
   });
 
   function findNodeFromEvent(e){
@@ -675,92 +986,55 @@
     }
     return null;
   }
-  function findLinkFromEvent(e){
-    const path = e.composedPath ? e.composedPath() : [];
-    for (const el of path){
-      if (!el || !el.getAttribute) continue;
-      const id = el.getAttribute("data-link-id");
-      if (id) return id;
+
+  // context buttons
+  document.getElementById("ctxChild").onclick = () => { if (selectedNodeId) addChildFrom(selectedNodeId); };
+  document.getElementById("ctxSibling").onclick = () => { if (selectedNodeId) addSiblingFrom(selectedNodeId); };
+  document.getElementById("ctxRename").onclick = () => { showToast("Тройной клик по тексту узла для редактирования"); };
+  document.getElementById("ctxColor").onclick = () => {
+    const n = getNode(selectedNodeId);
+    if (!n) return;
+    const i = PALETTE.findIndex(p => p.fill === n.style.fill && p.stroke === n.style.stroke);
+    const next = PALETTE[(Math.max(0,i)+1) % PALETTE.length];
+    n.style = {fill: next.fill, stroke: next.stroke};
+    save(); render();
+  };
+  document.getElementById("ctxIcon").onclick = () => {
+    const n = getNode(selectedNodeId);
+    if (!n) return;
+    const i = ICONS.indexOf(n.icon);
+    n.icon = ICONS[(i+1+ICONS.length) % ICONS.length];
+    save(); render();
+  };
+  document.getElementById("ctxCollapse").onclick = () => { if (selectedNodeId) toggleCollapse(selectedNodeId); };
+  document.getElementById("ctxDelete").onclick = () => deleteSelected();
+  document.getElementById("ctxClose").onclick = () => { selectedNodeId=null; render(); };
+
+  document.getElementById("ctxSpark").onclick = () => {
+    if (!selectedNodeId) return;
+    // локальная "✨": добавим 5 заготовок-детей (потом можно заменить AI)
+    const base = ["Идея 1","Идея 2","Идея 3","Идея 4","Идея 5"];
+    for (const t of base){
+      const id = addChildFrom(selectedNodeId);
+      const n = getNode(id);
+      if (n){ n.text = t; const m = measureNode(n.text); n.w=m.w; n.h=m.h; }
     }
-    return null;
-  }
+    save(); render();
+    showToast("✨ Добавлено 5 идей");
+  };
 
-  // ---------- storage ----------
-  function save(){
-    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
-  }
-
-  function load(){
-    try{
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw){
-        const obj = JSON.parse(raw);
-        if (obj && Array.isArray(obj.nodes) && Array.isArray(obj.links)){
-          state = obj;
-          state.view ||= {x:24,y:24,k:1};
-          state.nodes.forEach(n => {
-            n.text ||= "Идея";
-            const {w,h} = measureNode(n.text);
-            n.w ||= w; n.h ||= h;
-            n.icon = (typeof n.icon === "string") ? n.icon : "💡";
-            if (!n.style) n.style = {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke};
-            n.childColorNext = n.childColorNext || 0;
-          });
-          return true;
-        }
-      }
-
-      for (const k of MIGRATE_KEYS){
-        const oldRaw = localStorage.getItem(k);
-        if (!oldRaw) continue;
-        const old = JSON.parse(oldRaw);
-        if (!old || !Array.isArray(old.nodes) || !Array.isArray(old.links)) continue;
-
-        state.nodes = old.nodes.map(n => {
-          const text = n.text || "Идея";
-          const {w,h} = measureNode(text);
-          return {
-            id: n.id || uid(),
-            x: Number(n.x)||0,
-            y: Number(n.y)||0,
-            w, h,
-            text,
-            icon: (typeof n.icon === "string") ? n.icon : "💡",
-            style: n.style ? n.style : {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke},
-            childColorNext: n.childColorNext || 0
-          };
-        });
-        state.links = old.links.map(l => ({id: l.id || uid(), a:l.a, b:l.b})).filter(l => l.a && l.b);
-        state.view = old.view || {x:24,y:24,k:1};
-        save();
-        return true;
-      }
-
-      return false;
-    }catch(e){
-      return false;
-    }
-  }
-
-  // ---------- actions ----------
   function deleteSelected(){
-    if (selectedNodeId){
-      const id = selectedNodeId;
-      state.links = state.links.filter(l => l.a !== id && l.b !== id);
-      state.nodes = state.nodes.filter(n => n.id !== id);
-      selectedNodeId = null;
-      save(); render();
-      showToast("Узел удалён");
-      return;
-    }
-    if (selectedLinkId){
-      state.links = state.links.filter(l => l.id !== selectedLinkId);
-      selectedLinkId = null;
-      save(); render();
-      showToast("Связь удалена");
-      return;
-    }
-    showToast("Нечего удалять");
+    if (!selectedNodeId){ showToast("Выбери узел"); return; }
+    const id = selectedNodeId;
+
+    // delete subtree
+    const ids = new Set(subtreeIds(id));
+    state.nodes = state.nodes.filter(n => !ids.has(n.id));
+    state.links = state.links.filter(l => !ids.has(l.a) && !ids.has(l.b));
+
+    selectedNodeId = null;
+    save(); render();
+    showToast("Удалено");
   }
 
   function exportJSON(){
@@ -780,18 +1054,22 @@
       try{
         const obj = JSON.parse(fr.result);
         if (!obj || !Array.isArray(obj.nodes) || !Array.isArray(obj.links)) throw new Error("bad");
+
         obj.view ||= {x:24,y:24,k:1};
         obj.nodes.forEach(n => {
           n.text ||= "Идея";
-          const {w,h} = measureNode(n.text);
-          n.w = w; n.h = h; // пересчёт по новому движку
+          const m = measureNode(n.text);
+          n.w = m.w; n.h = m.h;
           n.icon = (typeof n.icon === "string") ? n.icon : "💡";
           if (!n.style) n.style = {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke};
           n.childColorNext = n.childColorNext || 0;
+          n.type ||= "mind";
+          n.collapsed = !!n.collapsed;
+          n.parentId = n.parentId || null;
         });
+
         state = obj;
         selectedNodeId = null;
-        selectedLinkId = null;
         save(); render();
         showToast("Импортировано");
       }catch(e){
@@ -805,106 +1083,186 @@
     const rootId = selectedNodeId || (state.nodes[0] && state.nodes[0].id);
     if (!rootId){ showToast("Нет узлов"); return; }
 
-    const adj = new Map();
-    for (const n of state.nodes) adj.set(n.id, []);
-    for (const l of state.links){
-      if (!adj.has(l.a) || !adj.has(l.b)) continue;
-      adj.get(l.a).push(l.b);
-      adj.get(l.b).push(l.a);
-    }
-
-    const children = new Map();
-    for (const n of state.nodes) children.set(n.id, []);
-    const seen = new Set([rootId]);
-    const q = [rootId];
-
-    while(q.length){
-      const v = q.shift();
-      for (const u of (adj.get(v)||[])){
-        if (seen.has(u)) continue;
-        seen.add(u);
-        children.get(v).push(u);
-        q.push(u);
-      }
-    }
-
     const r = svg.getBoundingClientRect();
     const center = clientToWorld(r.left + r.width/2, r.top + r.height/2);
-    const ring = 240;
 
-    function place(v, depth, a0, a1){
-      const n = getNode(v);
-      if (!n) return;
-      const ang = (a0+a1)/2;
-      const rad = depth * ring;
+    // simple radial layout by levels using parentId tree
+    function depth(id){
+      let d=0; let cur=getNode(id);
+      while(cur && cur.parentId){ d++; cur=getNode(cur.parentId); }
+      return d;
+    }
 
-      if (depth === 0){
-        n.x = center.x - n.w/2;
-        n.y = center.y - n.h/2;
-      } else {
+    const nodes = state.nodes.filter(n => !isHiddenByCollapse(n.id));
+    nodes.sort((a,b)=>depth(a.id)-depth(b.id));
+
+    const byDepth = new Map();
+    for (const n of nodes){
+      const d = (n.id===rootId) ? 0 : depth(n.id);
+      if (!byDepth.has(d)) byDepth.set(d, []);
+      byDepth.get(d).push(n);
+    }
+
+    const ring = 260;
+    const root = getNode(rootId);
+    if (!root) return;
+
+    root.x = center.x - root.w/2;
+    root.y = center.y - root.h/2;
+
+    for (const [d, arr] of byDepth.entries()){
+      if (d===0) continue;
+      const count = arr.length;
+      const a0 = -Math.PI + 0.2;
+      const a1 =  Math.PI - 0.2;
+      const step = (a1-a0)/Math.max(1,count);
+      for (let i=0;i<count;i++){
+        const n = arr[i];
+        const ang = a0 + step*(i+0.5);
+        const rad = d * ring;
         n.x = center.x + Math.cos(ang)*rad - n.w/2;
         n.y = center.y + Math.sin(ang)*rad - n.h/2;
       }
-
-      const kids = children.get(v) || [];
-      if (!kids.length) return;
-      const step = (a1-a0)/kids.length;
-      kids.forEach((c,i)=> place(c, depth+1, a0+step*i, a0+step*(i+1)));
     }
 
-    place(rootId, 0, -Math.PI+0.2, Math.PI-0.2);
     save(); render();
     showToast("Авто-раскладка готова");
   }
 
-  // ---------- UI buttons ----------
-  document.getElementById("addRoot").addEventListener("click", () => {
+  // left toolbar
+  function setTool(t){
+    tool = t;
+    document.querySelectorAll(".toolbtn").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
+    if (t === "center") centerOnSelection();
+  }
+  function centerOnSelection(){
+    if (!selectedNodeId) { showToast("Выбери узел"); return; }
+    const n = getNode(selectedNodeId);
+    if (!n) return;
+    const r = svg.getBoundingClientRect();
+    const cx = r.width/2;
+    const cy = r.height/2;
+    state.view.x = cx - (n.x + n.w/2) * state.view.k;
+    state.view.y = cy - (n.y + n.h/2) * state.view.k;
+    save(); render();
+  }
+  document.getElementById("leftbar").addEventListener("click", (e) => {
+    const btn = e.target.closest(".toolbtn");
+    if (!btn) return;
+    setTool(btn.dataset.tool);
+  });
+
+  // search
+  const searchInput = document.getElementById("search");
+  let searchHits = [];
+  let searchIndex = 0;
+
+  function runSearch(){
+    const q = (searchInput.value || "").trim().toLowerCase();
+    if (!q){ showToast("Введи текст поиска"); return; }
+
+    searchHits = state.nodes.filter(n => (n.text||"").toLowerCase().includes(q));
+    searchIndex = 0;
+
+    if (!searchHits.length){ showToast("Не найдено"); return; }
+    jumpToHit(0);
+  }
+
+  function jumpToHit(i){
+    const n = searchHits[i];
+    if (!n) return;
+    selectedNodeId = n.id;
+    render();
+    centerOnSelection();
+    positionContextToolbar();
+    showToast(`Найдено: ${i+1}/${searchHits.length}`);
+  }
+
+  document.getElementById("findNext").onclick = () => {
+    if (!searchHits.length) return runSearch();
+    searchIndex = (searchIndex + 1) % searchHits.length;
+    jumpToHit(searchIndex);
+  };
+
+  // header buttons
+  document.getElementById("addRoot").onclick = () => {
     if (state.nodes.length === 0){
-      addNode(260, 180, "Центральная идея", "🎯", PALETTE[0]);
+      addNode(260, 180, "Центральная идея", "🎯", PALETTE[0], "mind");
       showToast("Создан центр");
     } else {
       const r = svg.getBoundingClientRect();
       const p = clientToWorld(r.left + r.width/2, r.top + r.height/2);
-      addNode(p.x - 90, p.y - 29, "Новая идея", "💡", PALETTE[0]);
+      addNode(p.x-90, p.y-30, "Новая идея", "💡", PALETTE[0], "mind");
     }
-  });
-
-  document.getElementById("addChild").addEventListener("click", () => {
-    if (!selectedNodeId){ showToast("Сначала выбери узел"); return; }
-    addChildFrom(selectedNodeId);
-  });
-
-  document.getElementById("autoLayout").addEventListener("click", autoLayout);
-  document.getElementById("del").addEventListener("click", deleteSelected);
-  document.getElementById("export").addEventListener("click", exportJSON);
-
+  };
+  document.getElementById("autoLayout").onclick = autoLayout;
+  document.getElementById("resetView").onclick = () => fitDefault();
+  document.getElementById("export").onclick = exportJSON;
   document.getElementById("importFile").addEventListener("change", (e) => {
     const f = e.target.files && e.target.files[0];
     if (f) importJSON(f);
     e.target.value = "";
   });
-
-  document.getElementById("resetView").addEventListener("click", () => {
-    fitDefault();
-    showToast("Вид сброшен");
-  });
-
-  document.getElementById("clearAll").addEventListener("click", () => {
+  document.getElementById("clearAll").onclick = () => {
     if (!confirm("Удалить всё?")) return;
     state.nodes = [];
     state.links = [];
     selectedNodeId = null;
-    selectedLinkId = null;
     fitDefault();
     save(); render();
     showToast("Очищено");
+  };
+
+  // shortcuts
+  window.addEventListener("keydown", (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f"){
+      e.preventDefault();
+      searchInput.focus();
+      searchInput.select();
+      return;
+    }
+
+    if (e.key === "Delete" || e.key === "Backspace"){
+      if (selectedNodeId){
+        e.preventDefault();
+        deleteSelected();
+      }
+      return;
+    }
+
+    if (e.ctrlKey && e.key === "/"){
+      e.preventDefault();
+      if (selectedNodeId) toggleCollapse(selectedNodeId);
+      return;
+    }
+
+    // tool hotkeys
+    const k = e.key.toLowerCase();
+    if (k === "v") setTool("select");
+    if (k === "h") setTool("hand");
+    if (k === "n") setTool("node");
+    if (k === "s") setTool("sticky");
+    if (k === "t") setTool("text");
+    if (k === "c") setTool("center");
+
+    // mindmap navigation-like create
+    if (!selectedNodeId || editingNodeId) return;
+
+    if (e.key === "Tab"){
+      e.preventDefault();
+      addChildFrom(selectedNodeId);
+    }
+    if (e.key === "Enter"){
+      e.preventDefault();
+      addSiblingFrom(selectedNodeId);
+    }
   });
 
   // init
   const ok = load();
   if (!ok){
     fitDefault();
-    addNode(260, 180, "Центральная идея", "🎯", PALETTE[0]);
+    addNode(260, 180, "Центральная идея", "🎯", PALETTE[0], "mind");
   }
   render();
 
