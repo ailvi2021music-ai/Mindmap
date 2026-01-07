@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>MindMap Pro Lite (Projects)</title>
+  <title>MindMap</title>
   <meta name="theme-color" content="#f3f7ff" />
   <style>
     :root{
@@ -45,14 +45,7 @@
       flex-wrap:wrap;
     }
 
-    .brand{
-      display:flex; flex-direction:column; gap:2px; margin-right:6px;
-      min-width: 240px;
-    }
-    .brand b{ font-size:14px; letter-spacing:.2px; }
-    .brand span{ color:var(--muted); font-size:12px; }
-
-    .btn, select, input[type="text"]{
+    .btn, select{
       appearance:none;
       border:1px solid var(--stroke);
       background:rgba(255,255,255,.70);
@@ -75,11 +68,7 @@
     .btn.danger{ border-color: rgba(255,92,122,.55); }
     .sep{ width:1px; height:26px; background:var(--stroke); margin:0 2px; }
 
-    .stageWrap{
-      flex:1;
-      position:relative;
-      overflow:hidden;
-    }
+    .stageWrap{ flex:1; position:relative; overflow:hidden; }
     .stageWrap::before{
       content:"";
       position:absolute; inset:0;
@@ -92,7 +81,6 @@
       z-index:0;
     }
 
-    /* Left toolbar */
     .leftbar{
       position:absolute;
       left:14px; top:14px;
@@ -142,16 +130,14 @@
     }
     .toolbtn:hover .toolhint{ opacity:1; }
 
-    /* Scene */
     #scene{
       position:absolute;
       inset:0;
       z-index:1;
-      touch-action:none; /* we handle pan/zoom ourselves */
+      touch-action:none;
       user-select:none;
+      -webkit-user-select:none;
     }
-
-    /* Transform wrapper (panned/zoomed world) */
     #world{
       position:absolute;
       left:0; top:0;
@@ -159,7 +145,6 @@
       will-change: transform;
     }
 
-    /* Links under nodes */
     #links{
       position:absolute;
       left:0; top:0;
@@ -172,7 +157,6 @@
       fill: none;
     }
 
-    /* Nodes layer */
     #nodes{
       position:absolute;
       left:0; top:0;
@@ -207,7 +191,6 @@
       font-size:18px; line-height:1;
       flex:0 0 auto;
     }
-
     .node .text{
       flex:1 1 auto;
       line-height:1.15;
@@ -235,7 +218,6 @@
       white-space: pre-wrap;
     }
 
-    /* Collapse dot */
     .collapseDot{
       position:absolute;
       width: 22px; height: 22px;
@@ -252,7 +234,6 @@
       -webkit-user-select:none;
     }
 
-    /* Context toolbar */
     .ctx{
       position:absolute;
       z-index:90;
@@ -298,21 +279,11 @@
     .toast.show{ opacity:1; }
 
     input[type="file"]{ display:none; }
-
-    @media (max-width: 720px){
-      .brand span{ display:none; }
-      .brand{ min-width: 140px; }
-    }
   </style>
 </head>
 <body>
 <div class="app">
   <header>
-    <div class="brand">
-      <b>MindMap Pro Lite</b>
-      <span>Двойной клик по узлу — дочерний • Тройной — редактирование • Колесо — зум • Перетаскивание фона — пан</span>
-    </div>
-
     <select id="projectSelect" title="Майндмэп"></select>
     <button class="btn primary" id="projNew">+ Новый</button>
     <button class="btn" id="projRename">Переименовать</button>
@@ -370,8 +341,7 @@
 
 <script>
 (() => {
-  // ========= Storage model: multiple projects =========
-  const STORE_KEY = "mindmap_projects_v1";
+  const STORE_KEY = "mindmap_projects_v2";
 
   const PALETTE = [
     {name:"Sky",    fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.62)"},
@@ -396,6 +366,7 @@
   const importAll = document.getElementById("importAll");
 
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
+  const nowTs = () => Date.now();
 
   function showToast(msg){
     toast.textContent = msg;
@@ -403,28 +374,6 @@
     clearTimeout(showToast._t);
     showToast._t = setTimeout(()=> toast.classList.remove("show"), 1400);
   }
-
-  function nowTs(){ return Date.now(); }
-
-  // ====== Data structures ======
-  // store: { activeId, projects: { [id]: {id, name, createdAt, updatedAt, data:{nodes,links,view}} } }
-  // map data: nodes: {id,x,y,w,h,text,icon,style,childColorNext,parentId,collapsed}
-  let store = null;
-  let active = null; // active project object
-  let map = null;    // active.data
-
-  let tool = "select";
-  let selectedId = null;
-  let editingId = null;
-
-  const DRAG_THRESHOLD = 6;
-  let drag = null; // {kind:'node'|'pan', pointerId, sx,sy, moved, baseX,baseY, startViewX,startViewY}
-  const pointers = new Map();
-  let pinch = null;
-
-  // Tap logic (stable)
-  const tap = { id:null, count:0, t:0, timer:null };
-  const TAP_WINDOW = 420;
 
   const measureCanvas = document.createElement("canvas");
   const mctx = measureCanvas.getContext("2d");
@@ -441,18 +390,34 @@
     return {w,h};
   }
 
+  // ===== Storage =====
+  let store = null;
+  let active = null;
+  let map = null;
+
+  // ===== UI state =====
+  let tool = "select";
+  let selectedId = null;
+  let editingId = null;
+
+  const DRAG_THRESHOLD = 6;
+  let drag = null; // {kind:'node'|'pan', nodeId?, pointerId, sx,sy, moved, baseX,baseY, startViewX,startViewY}
+
+  const pointers = new Map();
+  let pinch = null;
+
+  const tap = { id:null, count:0, t:0, timer:null };
+  const TAP_WINDOW = 420;
+
   function saveStore(){
     try{ localStorage.setItem(STORE_KEY, JSON.stringify(store)); }catch(e){}
   }
-
   function loadStore(){
     try{
       const raw = localStorage.getItem(STORE_KEY);
       if (raw){
         const obj = JSON.parse(raw);
-        if (obj && obj.projects && typeof obj.projects === "object"){
-          return obj;
-        }
+        if (obj && obj.projects && typeof obj.projects === "object") return obj;
       }
     }catch(e){}
     return null;
@@ -478,25 +443,18 @@
 
   function createEmptyProject(name="Новый майндмэп"){
     const id = uid();
-    const data = normalizeMapData({
-      nodes: [],
-      links: [],
-      view: {x:24,y:24,k:1}
-    });
+    const data = normalizeMapData({ nodes: [], links: [], view:{x:24,y:24,k:1} });
 
-    // Create a center node by default
     const centerId = uid();
     const m = measureNode("Центральная идея");
     data.nodes.push({
-      id:centerId,
-      x:260, y:180,
-      w:m.w, h:m.h,
+      id:centerId, x:260, y:180, w:m.w, h:m.h,
       text:"Центральная идея",
       icon:"🎯",
       style:{fill: PALETTE[0].fill, stroke: PALETTE[0].stroke},
-      childColorNext: 0,
-      parentId: null,
-      collapsed: false
+      childColorNext:0,
+      parentId:null,
+      collapsed:false
     });
 
     const p = { id, name, createdAt: nowTs(), updatedAt: nowTs(), data };
@@ -504,54 +462,6 @@
     store.activeId = id;
     saveStore();
     return p;
-  }
-
-  function setActiveProject(id){
-    const p = store.projects[id];
-    if (!p) return;
-    store.activeId = id;
-    active = p;
-    map = normalizeMapData(JSON.parse(JSON.stringify(p.data))); // work copy
-    selectedId = null;
-    editingId = null;
-    saveStore();
-    rebuildProjectSelect();
-    renderAll();
-  }
-
-  function commitMap(){
-    if (!active) return;
-    active.updatedAt = nowTs();
-    active.data = JSON.parse(JSON.stringify(map));
-    saveStore();
-  }
-
-  // Debounced autosave
-  function autosave(){
-    clearTimeout(autosave._t);
-    autosave._t = setTimeout(() => commitMap(), 250);
-  }
-
-  // ====== Init store/projects ======
-  function init(){
-    store = loadStore();
-    if (!store){
-      store = { activeId: null, projects: {} };
-      createEmptyProject("Мой первый майндмэп");
-    } else {
-      // If empty, create one
-      if (!store.projects || Object.keys(store.projects).length === 0){
-        store.projects = {};
-        createEmptyProject("Мой первый майндмэп");
-      }
-      // Ensure activeId exists
-      if (!store.activeId || !store.projects[store.activeId]){
-        store.activeId = Object.keys(store.projects)[0];
-      }
-    }
-    saveStore();
-    rebuildProjectSelect();
-    setActiveProject(store.activeId);
   }
 
   function rebuildProjectSelect(){
@@ -571,7 +481,32 @@
     }
   }
 
-  // ====== Map helpers ======
+  function setActiveProject(id){
+    const p = store.projects[id];
+    if (!p) return;
+    store.activeId = id;
+    active = p;
+    map = normalizeMapData(JSON.parse(JSON.stringify(p.data)));
+    selectedId = null;
+    editingId = null;
+    drag = null; // IMPORTANT
+    saveStore();
+    rebuildProjectSelect();
+    renderAll();
+  }
+
+  function commitMap(){
+    if (!active) return;
+    active.updatedAt = nowTs();
+    active.data = JSON.parse(JSON.stringify(map));
+    saveStore();
+  }
+  function autosave(){
+    clearTimeout(autosave._t);
+    autosave._t = setTimeout(() => commitMap(), 250);
+  }
+
+  // ===== Map helpers =====
   function getNode(id){ return map.nodes.find(n => n.id === id); }
   function childrenOf(id){ return map.nodes.filter(n => n.parentId === id).map(n => n.id); }
 
@@ -593,6 +528,7 @@
   }
 
   function addNodeAt(x,y, text="Новая идея", icon="💡", style=PALETTE[0]){
+    drag = null; // IMPORTANT: never keep drag through creation
     const m = measureNode(text);
     const id = uid();
     map.nodes.push({
@@ -612,6 +548,7 @@
   function addChildFrom(parentId){
     const parent = getNode(parentId);
     if (!parent) return null;
+    drag = null; // IMPORTANT
 
     const idx = ((parent.childColorNext||0) + 1) % PALETTE.length;
     parent.childColorNext = (parent.childColorNext||0) + 1;
@@ -623,8 +560,7 @@
     const id = uid();
     const m = measureNode("Дочерняя идея");
     map.nodes.push({
-      id,
-      x, y, w:m.w, h:m.h,
+      id, x, y, w:m.w, h:m.h,
       text:"Дочерняя идея",
       icon:"✅",
       style:{fill: style.fill, stroke: style.stroke},
@@ -643,8 +579,9 @@
   function addSiblingFrom(nodeId){
     const n = getNode(nodeId);
     if (!n) return null;
-    const parentId = n.parentId || null;
+    drag = null; // IMPORTANT
 
+    const parentId = n.parentId || null;
     const x = n.x;
     const y = n.y + n.h + 18;
 
@@ -668,6 +605,7 @@
   }
 
   function deleteSubtree(id){
+    drag = null;
     const ids = new Set();
     const stack = [id];
     while(stack.length){
@@ -690,7 +628,7 @@
     renderAll();
   }
 
-  // ====== View transform ======
+  // ===== View transform =====
   function applyTransform(){
     const v = map.view;
     world.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.k})`;
@@ -705,16 +643,7 @@
     };
   }
 
-  function worldToClient(wx, wy){
-    const r = scene.getBoundingClientRect();
-    const v = map.view;
-    return {
-      x: r.left + v.x + wx * v.k,
-      y: r.top  + v.y + wy * v.k
-    };
-  }
-
-  // ====== Links drawing ======
+  // ===== Links =====
   function edgePoint(fromNode, toNode){
     const cx = fromNode.x + fromNode.w/2;
     const cy = fromNode.y + fromNode.h/2;
@@ -732,8 +661,6 @@
   }
 
   function drawLinks(){
-    // set big enough svg size (world coords)
-    // We'll keep it large so it covers typical map; dynamic expand:
     const maxX = Math.max(2000, ...map.nodes.map(n => n.x + n.w + 300));
     const maxY = Math.max(1400, ...map.nodes.map(n => n.y + n.h + 300));
     linksSvg.setAttribute("width", maxX);
@@ -759,7 +686,13 @@
     }
   }
 
-  // ====== Nodes rendering ======
+  // ===== Render nodes =====
+  function renderSelectionOnly(){
+    [...nodesLayer.querySelectorAll(".node")].forEach(el => {
+      el.classList.toggle("selected", el.getAttribute("data-id") === selectedId);
+    });
+  }
+
   function renderNodes(){
     nodesLayer.innerHTML = "";
 
@@ -787,85 +720,107 @@
       div.appendChild(icon);
       div.appendChild(text);
 
-      // pointerdown for selection + drag start
       div.addEventListener("pointerdown", (e) => {
         e.preventDefault();
-        e.stopPropagation();
         if (editingId) return;
 
         selectedId = n.id;
         renderSelectionOnly();
         positionCtx();
 
-        // start node drag
         drag = {
           kind: "node",
+          nodeId: n.id,             // IMPORTANT: drag specific node, not selectedId
           pointerId: e.pointerId,
           sx: e.clientX, sy: e.clientY,
           moved: false,
           baseX: n.x, baseY: n.y
         };
+
         div.setPointerCapture(e.pointerId);
       });
 
-      // Tap counting on pointerup of the same element
-      div.addEventListener("pointerup", (e) => {
-        e.stopPropagation();
-        if (editingId) return;
+      div.addEventListener("pointermove", (e) => {
+        if (!drag || drag.kind !== "node" || drag.pointerId !== e.pointerId || drag.nodeId !== n.id) return;
+        const dx = e.clientX - drag.sx;
+        const dy = e.clientY - drag.sy;
+        const dist = Math.hypot(dx, dy);
+        if (!drag.moved && dist > DRAG_THRESHOLD) drag.moved = true;
+        if (!drag.moved) return;
 
-        // if drag moved, ignore as click
-        if (drag && drag.kind === "node" && drag.pointerId === e.pointerId && drag.moved) return;
+        const node = getNode(drag.nodeId);
+        if (!node) return;
 
-        const now = Date.now();
-        const same = (tap.id === n.id) && (now - tap.t <= TAP_WINDOW);
+        node.x = drag.baseX + dx / map.view.k;
+        node.y = drag.baseY + dy / map.view.k;
 
-        tap.id = n.id;
-        tap.t = now;
-        tap.count = same ? (tap.count + 1) : 1;
+        div.style.left = node.x + "px";
+        div.style.top  = node.y + "px";
 
-        if (tap.timer) clearTimeout(tap.timer);
-        tap.timer = setTimeout(() => {
-          if (tap.id !== n.id) return;
+        const dot = nodesLayer.querySelector(`.collapseDot[data-dot-for="${CSS.escape(node.id)}"]`);
+        if (dot){
+          dot.style.left = (node.x + node.w + 10) + "px";
+          dot.style.top  = (node.y + node.h/2 - 11) + "px";
+        }
 
-          if (tap.count === 2){
-            addChildFrom(n.id);
-          } else if (tap.count >= 3){
-            beginEdit(n.id);
-          }
-          tap.id = null;
-          tap.count = 0;
-          tap.timer = null;
-        }, TAP_WINDOW + 30);
+        drawLinks();
+        positionCtx();
+        autosave();
       });
+
+      function endNodeDrag(e){
+        if (drag && drag.kind === "node" && drag.pointerId === e.pointerId){
+          drag = null;
+        }
+      }
+      div.addEventListener("pointerup", (e) => {
+        // IMPORTANT: DO NOT stopPropagation here (we need pointerup to be sane globally too)
+        if (!editingId){
+          // click/tap logic only if not moved
+          const moved = !!(drag && drag.kind === "node" && drag.pointerId === e.pointerId && drag.moved);
+          endNodeDrag(e);
+          if (moved) return;
+
+          const now = Date.now();
+          const same = (tap.id === n.id) && (now - tap.t <= TAP_WINDOW);
+          tap.id = n.id;
+          tap.t = now;
+          tap.count = same ? (tap.count + 1) : 1;
+
+          if (tap.timer) clearTimeout(tap.timer);
+          tap.timer = setTimeout(() => {
+            if (tap.id !== n.id) return;
+            if (tap.count === 2) addChildFrom(n.id);
+            else if (tap.count >= 3) beginEdit(n.id);
+            tap.id = null; tap.count = 0; tap.timer = null;
+          }, TAP_WINDOW + 30);
+        } else {
+          endNodeDrag(e);
+        }
+      });
+
+      div.addEventListener("pointercancel", endNodeDrag);
+      div.addEventListener("lostpointercapture", endNodeDrag);
 
       nodesLayer.appendChild(div);
 
-      // collapse dot (if has children)
       const kids = childrenOf(n.id);
       if (kids.length){
         const dot = document.createElement("div");
         dot.className = "collapseDot";
+        dot.setAttribute("data-dot-for", n.id);
         dot.style.left = (n.x + n.w + 10) + "px";
         dot.style.top  = (n.y + n.h/2 - 11) + "px";
         dot.textContent = n.collapsed ? "+" : "–";
-        dot.title = n.collapsed ? "Развернуть" : "Свернуть";
 
         dot.addEventListener("pointerdown", (e) => {
           e.preventDefault();
-          e.stopPropagation();
           toggleCollapse(n.id);
         });
 
         nodesLayer.appendChild(dot);
       }
     }
-  }
-
-  function renderSelectionOnly(){
-    // don’t rebuild everything: only selected class
-    [...nodesLayer.querySelectorAll(".node")].forEach(el => {
-      el.classList.toggle("selected", el.getAttribute("data-id") === selectedId);
-    });
   }
 
   function renderAll(){
@@ -875,7 +830,7 @@
     positionCtx();
   }
 
-  // ====== Context toolbar ======
+  // ===== Context toolbar =====
   function positionCtx(){
     if (!selectedId) { ctx.style.display = "none"; return; }
     const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(selectedId)}"]`);
@@ -883,17 +838,14 @@
     if (!nodeEl || !n || isHiddenByCollapse(selectedId)) { ctx.style.display = "none"; return; }
 
     const rect = nodeEl.getBoundingClientRect();
-    // Put it close: 6px below
     const left = rect.left + rect.width/2 - 180;
-    const top  = rect.bottom + 6;
+    const top  = rect.bottom + 6; // close
 
     ctx.style.display = "flex";
     ctx.style.left = Math.max(12, Math.min(window.innerWidth - 380, left)) + "px";
     ctx.style.top  = Math.max(76, Math.min(window.innerHeight - 60, top)) + "px";
 
-    // collapse icon dim if no children
-    const hasKids = childrenOf(selectedId).length > 0;
-    document.getElementById("ctxCollapse").style.opacity = hasKids ? "1" : ".45";
+    document.getElementById("ctxCollapse").style.opacity = childrenOf(selectedId).length ? "1" : ".45";
   }
 
   document.getElementById("ctxChild").onclick = () => { if (selectedId) addChildFrom(selectedId); };
@@ -916,13 +868,14 @@
   document.getElementById("ctxDelete").onclick = () => { if (selectedId) deleteSubtree(selectedId); };
   document.getElementById("ctxClose").onclick = () => { selectedId = null; renderSelectionOnly(); positionCtx(); };
 
-  // ====== Inline edit ======
+  // ===== Inline edit =====
   function beginEdit(id){
     if (editingId) return;
     const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(id)}"]`);
     const n = getNode(id);
     if (!nodeEl || !n) return;
 
+    drag = null;
     editingId = id;
     nodeEl.classList.add("editing");
 
@@ -931,7 +884,6 @@
     textEl.textContent = n.text || "";
     textEl.focus();
 
-    // caret to end
     const range = document.createRange();
     range.selectNodeContents(textEl);
     range.collapse(false);
@@ -963,7 +915,6 @@
     const onKey = (e) => {
       if (e.key === "Enter"){ e.preventDefault(); textEl.blur(); }
       if (e.key === "Escape"){ e.preventDefault(); finish(false); }
-      e.stopPropagation();
     };
     const onBlur = () => finish(true);
 
@@ -971,24 +922,28 @@
     textEl.addEventListener("blur", onBlur);
   }
 
-  // ====== Pan / Zoom / Drag ======
+  // ===== Scene pan/zoom =====
   scene.addEventListener("pointerdown", (e) => {
     pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
 
-    // if pointerdown on empty space and tool is node -> create node
-    const isOnNode = !!e.target.closest(".node") || !!e.target.closest(".collapseDot") || e.target.closest(".ctx");
-    if (!isOnNode){
+    const onNode = !!e.target.closest(".node") || !!e.target.closest(".collapseDot") || !!e.target.closest(".ctx");
+    if (!onNode){
+      // finish editing if user clicks outside
+      if (editingId){
+        const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(editingId)}"] .text`);
+        if (nodeEl) nodeEl.blur();
+      }
+
       if (tool === "node"){
         const p = clientToWorld(e.clientX, e.clientY);
         addNodeAt(p.x - 90, p.y - 30, "Новая идея", "💡", PALETTE[0]);
         return;
       }
-      // background selection clear
-      selectedId = null;
-      positionCtx();
-      renderSelectionOnly();
 
-      // start pan
+      selectedId = null;
+      renderSelectionOnly();
+      positionCtx();
+
       drag = {
         kind:"pan",
         pointerId:e.pointerId,
@@ -1000,7 +955,6 @@
       scene.setPointerCapture(e.pointerId);
     }
 
-    // pinch start
     if (pointers.size === 2){
       const pts = [...pointers.values()];
       pinch = {
@@ -1013,7 +967,6 @@
   scene.addEventListener("pointermove", (e) => {
     if (pointers.has(e.pointerId)) pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
 
-    // pinch zoom
     if (pointers.size === 2 && pinch){
       const pts = [...pointers.values()];
       const dist = Math.hypot(pts[1].x-pts[0].x, pts[1].y-pts[0].y);
@@ -1032,10 +985,12 @@
 
       applyTransform();
       positionCtx();
+      autosave();
       return;
     }
 
     if (!drag || drag.pointerId !== e.pointerId) return;
+    if (drag.kind !== "pan") return;
 
     const dx = e.clientX - drag.sx;
     const dy = e.clientY - drag.sy;
@@ -1043,73 +998,23 @@
     if (!drag.moved && dist > DRAG_THRESHOLD) drag.moved = true;
     if (!drag.moved) return;
 
-    if (drag.kind === "pan"){
-      map.view.x = drag.startViewX + dx;
-      map.view.y = drag.startViewY + dy;
-      applyTransform();
-      positionCtx();
-      autosave();
-      return;
-    }
-
-    if (drag.kind === "node"){
-      // node dragging is handled on node element via pointer capture, but
-      // keep safe if it reaches here
-    }
+    map.view.x = drag.startViewX + dx;
+    map.view.y = drag.startViewY + dy;
+    applyTransform();
+    positionCtx();
+    autosave();
   });
 
   scene.addEventListener("pointerup", (e) => {
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = null;
-
-    // release pan drag
-    if (drag && drag.pointerId === e.pointerId && drag.kind === "pan"){
-      drag = null;
-    }
+    if (drag && drag.kind === "pan" && drag.pointerId === e.pointerId) drag = null;
+  });
+  scene.addEventListener("pointercancel", (e) => {
+    pointers.delete(e.pointerId);
+    if (drag && drag.pointerId === e.pointerId) drag = null;
   });
 
-  // Node drag move happens on captured node element via pointermove on scene is not reliable;
-  // We'll attach global listener to move selected node while drag.kind === 'node'
-  window.addEventListener("pointermove", (e) => {
-    if (!drag || drag.kind !== "node" || drag.pointerId !== e.pointerId) return;
-    const n = getNode(selectedId);
-    if (!n) return;
-
-    const dx = e.clientX - drag.sx;
-    const dy = e.clientY - drag.sy;
-    const dist = Math.hypot(dx, dy);
-    if (!drag.moved && dist > DRAG_THRESHOLD) drag.moved = true;
-
-    if (!drag.moved) return;
-
-    n.x = drag.baseX + dx / map.view.k;
-    n.y = drag.baseY + dy / map.view.k;
-
-    // update only positions fast
-    const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(n.id)}"]`);
-    if (nodeEl){
-      nodeEl.style.left = n.x + "px";
-      nodeEl.style.top  = n.y + "px";
-    }
-    // collapse dot (if exists) will be rebuilt on full render; quick reposition now:
-    const dot = nodesLayer.querySelector(`.collapseDot[data-dot-for="${CSS.escape(n.id)}"]`);
-    if (dot){
-      dot.style.left = (n.x + n.w + 10) + "px";
-      dot.style.top  = (n.y + n.h/2 - 11) + "px";
-    }
-
-    drawLinks();
-    positionCtx();
-    autosave();
-  }, {passive:false});
-
-  window.addEventListener("pointerup", (e) => {
-    if (drag && drag.pointerId === e.pointerId && drag.kind === "node"){
-      drag = null;
-    }
-  });
-
-  // Wheel zoom
   wrap.addEventListener("wheel", (e) => {
     e.preventDefault();
     const delta = Math.sign(e.deltaY);
@@ -1131,14 +1036,13 @@
     autosave();
   }, {passive:false});
 
-  // Dblclick empty space => new node
   scene.addEventListener("dblclick", (e) => {
     if (e.target.closest(".node") || e.target.closest(".collapseDot") || e.target.closest(".ctx")) return;
     const p = clientToWorld(e.clientX, e.clientY);
     addNodeAt(p.x - 90, p.y - 30, "Новая идея", "💡", PALETTE[0]);
   });
 
-  // ====== Toolbar/tool selection ======
+  // ===== Tools =====
   function setTool(t){
     tool = t;
     document.querySelectorAll(".toolbtn").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
@@ -1163,10 +1067,8 @@
     setTool("select");
   }
 
-  // ====== Header/project actions ======
-  projectSelect.addEventListener("change", () => {
-    setActiveProject(projectSelect.value);
-  });
+  // ===== Header actions =====
+  projectSelect.addEventListener("change", () => setActiveProject(projectSelect.value));
 
   document.getElementById("projNew").onclick = () => {
     const name = prompt("Название нового майндмэпа:", "Новый майндмэп");
@@ -1189,6 +1091,7 @@
 
   document.getElementById("projDup").onclick = () => {
     if (!active) return;
+    commitMap();
     const name = prompt("Название копии:", (active.name || "Майндмэп") + " (копия)");
     const id = uid();
     const clone = {
@@ -1196,7 +1099,7 @@
       name: (name || "Копия").trim(),
       createdAt: nowTs(),
       updatedAt: nowTs(),
-      data: JSON.parse(JSON.stringify(active.data))
+      data: JSON.parse(JSON.stringify(store.projects[store.activeId].data))
     };
     store.projects[id] = clone;
     store.activeId = id;
@@ -1209,7 +1112,6 @@
   document.getElementById("projDel").onclick = () => {
     if (!active) return;
     if (!confirm(`Удалить "${active.name}"?`)) return;
-
     delete store.projects[active.id];
     const ids = Object.keys(store.projects);
     if (!ids.length){
@@ -1241,7 +1143,7 @@
     }
     autosave();
     renderAll();
-    showToast("Авто-раскладка готова");
+    showToast("Готово");
   };
 
   document.getElementById("resetView").onclick = () => {
@@ -1249,19 +1151,14 @@
     applyTransform();
     positionCtx();
     autosave();
-    showToast("Вид сброшен");
+    showToast("Сброшено");
   };
 
-  // ====== Export/Import ======
+  // Export/Import
   document.getElementById("exportOne").onclick = () => {
     if (!active) return;
-    // Commit latest map into active first
     commitMap();
-    const payload = {
-      kind: "mindmap_project",
-      version: 1,
-      project: store.projects[store.activeId]
-    };
+    const payload = { kind:"mindmap_project", version:2, project: store.projects[store.activeId] };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1292,7 +1189,7 @@
         setActiveProject(p.id);
         showToast("Импортировано");
       }catch(err){
-        showToast("Не удалось импортировать карту");
+        showToast("Ошибка импорта");
       }
     };
     fr.readAsText(f);
@@ -1301,11 +1198,7 @@
 
   document.getElementById("exportAll").onclick = () => {
     commitMap();
-    const payload = {
-      kind: "mindmap_store",
-      version: 1,
-      store
-    };
+    const payload = { kind:"mindmap_store", version:2, store };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1325,7 +1218,6 @@
         if (!obj || obj.kind !== "mindmap_store" || !obj.store) throw new Error("bad");
         const s = obj.store;
         if (!s.projects || typeof s.projects !== "object") throw new Error("bad");
-        // normalize all
         Object.values(s.projects).forEach(p => {
           if (!p.id) p.id = uid();
           p.name ||= "Майндмэп";
@@ -1340,16 +1232,16 @@
         saveStore();
         rebuildProjectSelect();
         setActiveProject(store.activeId);
-        showToast("Импорт всех выполнен");
+        showToast("Импорт выполнен");
       }catch(err){
-        showToast("Не удалось импортировать все карты");
+        showToast("Ошибка импорта");
       }
     };
     fr.readAsText(f);
     e.target.value = "";
   });
 
-  // ====== Shortcuts ======
+  // Shortcuts
   window.addEventListener("keydown", (e) => {
     const k = e.key.toLowerCase();
     if (k === "v") setTool("select");
@@ -1361,111 +1253,37 @@
       e.preventDefault();
       if (selectedId) toggleCollapse(selectedId);
     }
-
     if (e.key === "Tab" && selectedId && !editingId){
-      e.preventDefault();
-      addChildFrom(selectedId);
+      e.preventDefault(); addChildFrom(selectedId);
     }
     if (e.key === "Enter" && selectedId && !editingId){
-      e.preventDefault();
-      addSiblingFrom(selectedId);
+      e.preventDefault(); addSiblingFrom(selectedId);
     }
     if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingId){
-      e.preventDefault();
-      deleteSubtree(selectedId);
+      e.preventDefault(); deleteSubtree(selectedId);
     }
   });
 
-  // ====== Fix collapse dot data attribute & render refinement ======
-  // override renderNodes to mark dot for quick updates
-  const _renderNodes = renderNodes;
-  renderNodes = function(){
-    nodesLayer.innerHTML = "";
-    for (const n of map.nodes){
-      if (isHiddenByCollapse(n.id)) continue;
-
-      const div = document.createElement("div");
-      div.className = "node" + (n.id === selectedId ? " selected" : "");
-      div.style.left = n.x + "px";
-      div.style.top  = n.y + "px";
-      div.style.width = n.w + "px";
-      div.style.height = n.h + "px";
-      div.style.background = n.style?.fill || "rgba(255,255,255,.80)";
-      div.style.borderColor = n.style?.stroke || "rgba(11,19,36,.18)";
-      div.setAttribute("data-id", n.id);
-
-      const icon = document.createElement("div");
-      icon.className = "icon";
-      icon.textContent = n.icon || "";
-
-      const text = document.createElement("div");
-      text.className = "text";
-      text.textContent = n.text || "";
-
-      div.appendChild(icon);
-      div.appendChild(text);
-
-      div.addEventListener("pointerdown", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        if (editingId) return;
-
-        selectedId = n.id;
-        renderSelectionOnly();
-        positionCtx();
-
-        drag = {
-          kind: "node",
-          pointerId: e.pointerId,
-          sx: e.clientX, sy: e.clientY,
-          moved: false,
-          baseX: n.x, baseY: n.y
-        };
-        div.setPointerCapture(e.pointerId);
-      });
-
-      div.addEventListener("pointerup", (e) => {
-        e.stopPropagation();
-        if (editingId) return;
-        if (drag && drag.kind === "node" && drag.pointerId === e.pointerId && drag.moved) return;
-
-        const now = Date.now();
-        const same = (tap.id === n.id) && (now - tap.t <= TAP_WINDOW);
-        tap.id = n.id;
-        tap.t = now;
-        tap.count = same ? (tap.count + 1) : 1;
-
-        if (tap.timer) clearTimeout(tap.timer);
-        tap.timer = setTimeout(() => {
-          if (tap.id !== n.id) return;
-          if (tap.count === 2) addChildFrom(n.id);
-          else if (tap.count >= 3) beginEdit(n.id);
-          tap.id = null; tap.count = 0; tap.timer = null;
-        }, TAP_WINDOW + 30);
-      });
-
-      nodesLayer.appendChild(div);
-
-      const kids = childrenOf(n.id);
-      if (kids.length){
-        const dot = document.createElement("div");
-        dot.className = "collapseDot";
-        dot.setAttribute("data-dot-for", n.id);
-        dot.style.left = (n.x + n.w + 10) + "px";
-        dot.style.top  = (n.y + n.h/2 - 11) + "px";
-        dot.textContent = n.collapsed ? "+" : "–";
-        dot.title = n.collapsed ? "Развернуть" : "Свернуть";
-        dot.addEventListener("pointerdown", (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          toggleCollapse(n.id);
-        });
-        nodesLayer.appendChild(dot);
+  // ===== Init =====
+  function init(){
+    store = loadStore();
+    if (!store){
+      store = { activeId:null, projects:{} };
+      createEmptyProject("Мой первый майндмэп");
+    } else {
+      if (!store.projects || Object.keys(store.projects).length === 0){
+        store.projects = {};
+        createEmptyProject("Мой первый майндмэп");
+      }
+      if (!store.activeId || !store.projects[store.activeId]){
+        store.activeId = Object.keys(store.projects)[0];
       }
     }
-  };
+    saveStore();
+    rebuildProjectSelect();
+    setActiveProject(store.activeId);
+  }
 
-  // ====== Start ======
   init();
 })();
 </script>
