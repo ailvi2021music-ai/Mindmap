@@ -21,10 +21,16 @@
       --grid:rgba(255,255,255,.05);
     }
     *{ box-sizing:border-box; }
-    html,body{ height:100%; margin:0; background: radial-gradient(1200px 800px at 20% 10%, rgba(89,195,255,.18), transparent 55%),
-                                radial-gradient(900px 700px at 90% 20%, rgba(255,92,122,.12), transparent 55%),
-                                linear-gradient(180deg, var(--bg0), var(--bg1));
-              color:var(--text); font: 14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    html,body{
+      height:100%;
+      margin:0;
+      background:
+        radial-gradient(1200px 800px at 20% 10%, rgba(89,195,255,.18), transparent 55%),
+        radial-gradient(900px 700px at 90% 20%, rgba(255,92,122,.12), transparent 55%),
+        linear-gradient(180deg, var(--bg0), var(--bg1));
+      color:var(--text);
+      font: 14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
     .app{ height:100%; display:flex; flex-direction:column; }
     header{
       display:flex; gap:10px; align-items:center; padding:12px 14px;
@@ -49,13 +55,19 @@
     .btn:active{ transform: translateY(1px); }
     .btn.primary{ border-color: rgba(89,195,255,.45); }
     .btn.danger{ border-color: rgba(255,92,122,.45); }
-    .btn.small{ padding:7px 9px; border-radius:10px; font-size:13px; }
     .sep{ width:1px; height:26px; background:var(--stroke); margin:0 2px; }
 
     .hint{
-      margin-left:auto; color:var(--muted); font-size:12px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+      margin-left:auto; color:var(--muted); font-size:12px;
+      display:flex; gap:10px; align-items:center; flex-wrap:wrap;
     }
-    .hint code{ background:rgba(255,255,255,.06); border:1px solid var(--stroke); padding:2px 6px; border-radius:8px; color:var(--text); }
+    .hint code{
+      background:rgba(255,255,255,.06);
+      border:1px solid var(--stroke);
+      padding:2px 6px;
+      border-radius:8px;
+      color:var(--text);
+    }
 
     .stageWrap{ flex:1; position:relative; overflow:hidden; }
     .stageWrap::before{
@@ -64,13 +76,20 @@
         radial-gradient(circle at 0 0, var(--grid) 1px, transparent 1px),
         radial-gradient(circle at 0 0, var(--grid) 1px, transparent 1px);
       background-size: 36px 36px, 6px 6px;
-      background-position: 0 0, 0 0;
       opacity:.35;
       pointer-events:none;
       transform: translateZ(0);
     }
 
-    svg{ position:absolute; inset:0; touch-action:none; }
+    /* ✅ iOS/Safari FIX: без width/height SVG остаётся 300×150 */
+    svg{
+      position:absolute;
+      inset:0;
+      width:100%;
+      height:100%;
+      display:block;
+      touch-action:none;
+    }
 
     .link{
       stroke: rgba(89,195,255,.55);
@@ -89,10 +108,7 @@
       stroke: rgba(89,195,255,.75);
       stroke-width: 2.2;
     }
-    .groupLabel{
-      font-size: 12px;
-      fill: rgba(234,242,255,.90);
-    }
+    .groupLabel{ font-size: 12px; fill: rgba(234,242,255,.90); }
     .groupBadge{
       fill: rgba(0,0,0,.25);
       stroke: rgba(255,255,255,.12);
@@ -129,10 +145,7 @@
       fill: rgba(234,242,255,.72);
       font-size: 11.5px;
     }
-    .icon{
-      font-size: 16px;
-      opacity:.95;
-    }
+    .icon{ font-size: 16px; opacity:.95; }
 
     .toast{
       position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
@@ -145,6 +158,7 @@
       opacity:0; pointer-events:none;
       transition: opacity .18s ease;
       max-width:min(700px, calc(100% - 24px));
+      z-index: 5;
     }
     .toast.show{ opacity:1; }
 
@@ -196,14 +210,13 @@
   </header>
 
   <div class="stageWrap" id="wrap">
-    <svg id="svg" xmlns="http://www.w3.org/2000/svg"></svg>
+    <svg id="svg" width="100%" height="100%" xmlns="http://www.w3.org/2000/svg"></svg>
     <div class="toast" id="toast"></div>
   </div>
 </div>
 
 <script>
 (() => {
-  // ====== State ======
   const STORAGE_KEY = "mini_mindmap_v2";
   const OLD_KEY = "mini_mindmap_v1";
   const svg = document.getElementById("svg");
@@ -220,20 +233,22 @@
   ];
 
   let state = {
-    nodes: [], // {id, x, y, text, note, w, h, icon, style:{fill,stroke}, groupId?}
-    links: [], // {id, a, b}
-    groups: [],// {id, name, style:{fill,stroke}, pad, locked?}
+    nodes: [],   // {id,x,y,text,note,w,h,icon,style:{fill,stroke},groupId}
+    links: [],   // {id,a,b}
+    groups: [],  // {id,name,style:{fill,stroke},pad}
     view: { x: 0, y: 0, k: 1 }
   };
 
   let selectedNodeId = null;
   let selectedLinkId = null;
   let selectedGroupId = null;
+  let multi = new Set();
 
-  let multi = new Set(); // multi-selected node ids (Ctrl/Meta click)
+  let drag = null;       // {type:'node'|'pan'|'group', ...}
+  let linkDraft = null;  // {fromId,x,y}
 
-  let drag = null;  // {type:'node'|'pan'|'group', id, sx, sy, ox, oy, movedIds?}
-  let linkDraft = null; // {fromId, x, y}
+  let isSpaceDown = false;
+  let pressTimer = null;
 
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
 
@@ -244,12 +259,13 @@
     showToast._t = setTimeout(()=> toast.classList.remove("show"), 1400);
   }
 
-  // ====== Helpers: coordinate transforms ======
+  // ---------- coords ----------
   function clientToWorld(cx, cy){
     const r = svg.getBoundingClientRect();
-    const x = (cx - r.left - state.view.x) / state.view.k;
-    const y = (cy - r.top  - state.view.y) / state.view.k;
-    return {x, y};
+    return {
+      x: (cx - r.left - state.view.x) / state.view.k,
+      y: (cy - r.top  - state.view.y) / state.view.k
+    };
   }
 
   function setView(x, y, k){
@@ -263,7 +279,7 @@
     setView(20, 20, 1);
   }
 
-  // ====== Node sizing ======
+  // ---------- data helpers ----------
   function measureNode(text, note){
     const base = 96;
     const extra = Math.min(340, (text || "").length * 7.2);
@@ -271,18 +287,18 @@
     const h = note ? 60 : 46;
     return {w, h};
   }
+  function defaultStyle(){ return PALETTE[0]; }
 
-  function defaultStyle(){
-    // slightly random but stable-ish
-    return PALETTE[0];
-  }
+  function getNode(id){ return state.nodes.find(n => n.id === id); }
+  function getLink(id){ return state.links.find(l => l.id === id); }
+  function getGroup(id){ return state.groups.find(g => g.id === id); }
 
   function addNode(x, y, text="Идея", note="", icon="💡", style=defaultStyle()){
-    const {w, h} = measureNode(text, note);
+    const {w,h} = measureNode(text, note);
     const id = uid();
     state.nodes.push({
       id, x, y, text, note, w, h,
-      icon: icon || "",
+      icon: (icon || "").trim(),
       style: style ? {fill: style.fill, stroke: style.stroke} : {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke},
       groupId: null
     });
@@ -299,17 +315,13 @@
     save(); render();
   }
 
-  function getNode(id){ return state.nodes.find(n => n.id === id); }
-  function getLink(id){ return state.links.find(l => l.id === id); }
-  function getGroup(id){ return state.groups.find(g => g.id === id); }
-
+  // ---------- selection ----------
   function clearSelection(){
     selectedNodeId = null;
     selectedLinkId = null;
     selectedGroupId = null;
     render();
   }
-
   function selectNode(id){
     selectedNodeId = id;
     selectedLinkId = null;
@@ -328,21 +340,20 @@
     selectedLinkId = null;
     render();
   }
-
   function toggleMulti(id){
     if (multi.has(id)) multi.delete(id);
     else multi.add(id);
-    // keep selectedNodeId as last clicked for "add child" etc.
     selectedNodeId = id;
     selectedLinkId = null;
     selectedGroupId = null;
     render();
   }
 
-  // ====== Grouping ======
+  // ---------- groups ----------
   function computeGroupBounds(groupId){
     const members = state.nodes.filter(n => n.groupId === groupId);
     if (!members.length) return null;
+
     let minX=Infinity, minY=Infinity, maxX=-Infinity, maxY=-Infinity;
     for (const n of members){
       minX = Math.min(minX, n.x);
@@ -351,13 +362,29 @@
       maxY = Math.max(maxY, n.y + n.h);
     }
     const g = getGroup(groupId);
-    const pad = (g && typeof g.pad === "number") ? g.pad : 28;
+    const pad = (g && typeof g.pad === "number") ? g.pad : 30;
+
     return {
       x: minX - pad,
-      y: minY - pad - 18, // a bit space for label
+      y: minY - pad - 18,
       w: (maxX - minX) + pad*2,
       h: (maxY - minY) + pad*2 + 18
     };
+  }
+
+  function pickPalettePrompt(){
+    const msg =
+`Выбери стиль (введи номер):
+1) Sky
+2) Rose
+3) Lime
+4) Amber
+5) Violet
+6) Slate`;
+    const ans = prompt(msg, "1");
+    if (ans === null) return null;
+    const i = Math.max(1, Math.min(6, parseInt(ans,10) || 1)) - 1;
+    return PALETTE[i];
   }
 
   function createGroupFromMulti(){
@@ -380,22 +407,17 @@
       pad: 30
     });
 
-    ids.forEach(id => {
-      const n = getNode(id);
-      if (n) n.groupId = gid;
-    });
-
+    ids.forEach(id => { const n = getNode(id); if (n) n.groupId = gid; });
     multi.clear();
     selectGroup(gid);
     save(); render();
     showToast("Группа создана");
   }
 
-  // ====== Delete ======
+  // ---------- delete ----------
   function deleteSelected(){
     if (selectedGroupId){
       const gid = selectedGroupId;
-      // unassign nodes
       state.nodes.forEach(n => { if (n.groupId === gid) n.groupId = null; });
       state.groups = state.groups.filter(g => g.id !== gid);
       selectedGroupId = null;
@@ -436,15 +458,12 @@
     showToast("Нечего удалять");
   }
 
-  // ====== Persistence ======
+  // ---------- persistence ----------
   function save(){
-    try{
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    }catch(e){}
+    try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }catch(e){}
   }
 
   function migrateIfNeeded(){
-    // If v2 exists -> load it; else if v1 exists -> migrate to v2
     const v2 = localStorage.getItem(STORAGE_KEY);
     if (v2) return;
 
@@ -454,6 +473,7 @@
     try{
       const old = JSON.parse(v1);
       if (!old || !Array.isArray(old.nodes) || !Array.isArray(old.links)) return;
+
       state.nodes = old.nodes.map(n => {
         const {w,h} = measureNode(n.text || "Идея", n.note || "");
         return {
@@ -488,16 +508,16 @@
       state.groups ||= [];
       state.view ||= {x:20,y:20,k:1};
 
-      // patch missing fields
       state.nodes.forEach(n => {
         n.text ||= "Идея";
         n.note ||= "";
         const {w,h} = measureNode(n.text, n.note);
         n.w ||= w; n.h ||= h;
-        n.icon = (typeof n.icon === "string") ? n.icon : "💡";
+        n.icon = (typeof n.icon === "string") ? n.icon : "";
         if (!n.style) n.style = {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke};
         if (!("groupId" in n)) n.groupId = null;
       });
+
       state.groups.forEach(g => {
         g.name ||= "Группа";
         g.pad = typeof g.pad === "number" ? g.pad : 30;
@@ -525,10 +545,10 @@
       try{
         const obj = JSON.parse(fr.result);
         if (!obj || !Array.isArray(obj.nodes) || !Array.isArray(obj.links)) throw new Error("bad");
+
         obj.groups ||= [];
         obj.view ||= {x:20,y:20,k:1};
 
-        // normalize
         obj.nodes.forEach(n => {
           n.text ||= "Идея";
           n.note ||= "";
@@ -538,6 +558,7 @@
           if (!n.style) n.style = {fill: PALETTE[0].fill, stroke: PALETTE[0].stroke};
           if (!("groupId" in n)) n.groupId = null;
         });
+
         obj.groups.forEach(g => {
           g.name ||= "Группа";
           g.pad = typeof g.pad === "number" ? g.pad : 30;
@@ -547,7 +568,6 @@
         state = obj;
         selectedNodeId = null; selectedLinkId = null; selectedGroupId = null;
         multi.clear();
-
         save(); render();
         showToast("Импортировано");
       }catch(e){
@@ -557,23 +577,21 @@
     fr.readAsText(file);
   }
 
-  // ====== SVG helpers ======
+  // ---------- svg helpers ----------
   function el(name, attrs={}){
     const x = document.createElementNS("http://www.w3.org/2000/svg", name);
     for (const [k,v] of Object.entries(attrs)) x.setAttribute(k, String(v));
     return x;
   }
 
-  // ====== Rendering ======
+  // ---------- render ----------
   function render(){
     while(svg.firstChild) svg.removeChild(svg.firstChild);
 
-    const gView = el("g", {
-      transform: `translate(${state.view.x},${state.view.y}) scale(${state.view.k})`
-    });
+    const gView = el("g", { transform: `translate(${state.view.x},${state.view.y}) scale(${state.view.k})` });
     svg.appendChild(gView);
 
-    // 1) groups (behind)
+    // groups (behind)
     state.groups.forEach(gr => {
       const b = computeGroupBounds(gr.id);
       if (!b) return;
@@ -584,50 +602,38 @@
         "data-group-id": gr.id
       });
 
-      const r = el("rect", {
+      const rect = el("rect", {
         width: b.w,
         height: b.h,
         style: `fill:${gr.style.fill};stroke:${gr.style.stroke};`
       });
 
-      // label badge
+      const badgeW = Math.max(70, (gr.name||"").length * 7.2 + 28);
       const badge = el("rect", {
         class:"groupBadge",
-        x: 14, y: 12, width: Math.max(70, (gr.name||"").length * 7.2 + 28), height: 22,
+        x: 14, y: 12, width: badgeW, height: 22,
         style: `fill: rgba(0,0,0,.28); stroke: rgba(255,255,255,.14);`
       });
 
-      const t = el("text", {
-        class:"groupLabel",
-        x: 14 + 14,
-        y: 23
-      });
-      t.textContent = gr.name || "Группа";
+      const label = el("text", { class:"groupLabel", x: 28, y: 23 });
+      label.textContent = gr.name || "Группа";
 
-      gg.appendChild(r);
+      gg.appendChild(rect);
       gg.appendChild(badge);
-      gg.appendChild(t);
+      gg.appendChild(label);
 
-      // group drag/select
       gg.addEventListener("pointerdown", (e) => {
         e.stopPropagation();
         selectGroup(gr.id);
-
-        // drag group: moves all member nodes together
         const members = state.nodes.filter(n => n.groupId === gr.id).map(n => n.id);
-        drag = {
-          type: "group",
-          id: gr.id,
-          movedIds: members,
-          sx: e.clientX, sy: e.clientY
-        };
+        drag = { type:"group", id: gr.id, movedIds: members, sx:e.clientX, sy:e.clientY, base:null };
         svg.setPointerCapture(e.pointerId);
       });
 
       gView.appendChild(gg);
     });
 
-    // 2) links
+    // links
     state.links.forEach(l => {
       const a = getNode(l.a), b = getNode(l.b);
       if (!a || !b) return;
@@ -645,10 +651,7 @@
         class: "link" + (l.id === selectedLinkId ? " selected" : ""),
         "data-link-id": l.id
       });
-      path.addEventListener("pointerdown", (e) => {
-        e.stopPropagation();
-        selectLink(l.id);
-      });
+      path.addEventListener("pointerdown", (e) => { e.stopPropagation(); selectLink(l.id); });
       gView.appendChild(path);
     });
 
@@ -660,13 +663,13 @@
         const bx = linkDraft.x, by = linkDraft.y;
         const dx = (bx-ax);
         const d = `M ${ax} ${ay} C ${ax+dx*0.33} ${ay}, ${ax+dx*0.66} ${by}, ${bx} ${by}`;
-        gView.appendChild(el("path", {d, class:"link", opacity:"0.6", "stroke-dasharray":"6 6"}));
+        gView.appendChild(el("path", { d, class:"link", opacity:"0.6", "stroke-dasharray":"6 6" }));
       }
     }
 
-    // 3) nodes
+    // nodes
     state.nodes.forEach(n => {
-      const isSel = n.id === selectedNodeId;
+      const isSel = (n.id === selectedNodeId);
       const isMulti = multi.has(n.id);
 
       const gn = el("g", {
@@ -677,14 +680,16 @@
 
       const rect = el("rect", {
         width: n.w, height: n.h,
-        style: `fill:${(n.style && n.style.fill) ? n.style.fill : "rgba(255,255,255,.07)"};`+
-               `stroke:${(n.style && n.style.stroke) ? n.style.stroke : "rgba(255,255,255,.18)"};`
+        style:
+          `fill:${(n.style && n.style.fill) ? n.style.fill : "rgba(255,255,255,.07)"};`+
+          `stroke:${(n.style && n.style.stroke) ? n.style.stroke : "rgba(255,255,255,.18)"};`
       });
+
+      gn.appendChild(rect);
 
       const hasIcon = (n.icon && n.icon.trim().length > 0);
       const leftPad = hasIcon ? 36 : 14;
 
-      // icon
       if (hasIcon){
         const ic = el("text", { x: 14, y: n.h/2 - (n.note ? 8 : 0), class:"icon" });
         ic.textContent = n.icon;
@@ -693,13 +698,6 @@
 
       const title = el("text", { x: leftPad, y: n.h/2 - (n.note ? 8 : 0) });
       title.textContent = n.text || "Идея";
-
-      gn.appendChild(rect);
-      // keep icon/title above rect visually: append rect first, then texts
-      // (we appended rect already; but icon/title appended after. Fix ordering:)
-      // Reorder: move rect to first child
-      gn.insertBefore(rect, gn.firstChild);
-
       gn.appendChild(title);
 
       if (n.note){
@@ -711,35 +709,29 @@
       // interactions
       gn.addEventListener("pointerdown", (e) => {
         e.stopPropagation();
-        const nodeId = n.id;
 
-        // Ctrl/Meta: multi select toggle
         if (e.ctrlKey || e.metaKey){
-          toggleMulti(nodeId);
+          toggleMulti(n.id);
           svg.setPointerCapture(e.pointerId);
           return;
         }
 
-        // Shift: link mode
         if (e.shiftKey){
-          linkDraft = {fromId: nodeId, x: (n.x + n.w/2), y: (n.y + n.h/2)};
-          selectNode(nodeId);
+          linkDraft = { fromId: n.id, x: (n.x + n.w/2), y: (n.y + n.h/2) };
+          selectNode(n.id);
           svg.setPointerCapture(e.pointerId);
           return;
         }
 
-        // normal select + drag (if multi has this id -> drag all multi)
-        selectNode(nodeId);
+        selectNode(n.id);
 
-        const draggingIds = multi.size ? (multi.has(nodeId) ? [...multi] : [nodeId]) : [nodeId];
+        const moveIds = (multi.size && multi.has(n.id)) ? [...multi] : [n.id];
         drag = {
           type: "node",
-          id: nodeId,
-          movedIds: draggingIds,
+          movedIds: moveIds,
           sx: e.clientX, sy: e.clientY,
-          ox: draggingIds.map(id => ({id, x:getNode(id)?.x||0, y:getNode(id)?.y||0}))
+          base: moveIds.map(id => ({ id, x: getNode(id).x, y: getNode(id).y }))
         };
-        gn.style.cursor = "grabbing";
         svg.setPointerCapture(e.pointerId);
       });
 
@@ -755,7 +747,7 @@
     wrap.style.cursor = isSpaceDown ? "grab" : "default";
   }
 
-  // ====== Editing (text) ======
+  // ---------- edit ----------
   function editSelected(){
     const n = selectedNodeId ? getNode(selectedNodeId) : null;
     if (!n){ showToast("Выбери узел"); return; }
@@ -774,49 +766,31 @@
     save(); render();
   }
 
-  // ====== Style (icon/color/group assign) ======
-  function pickPalettePrompt(){
-    const msg =
-`Выбери стиль (введи номер):
-1) Sky
-2) Rose
-3) Lime
-4) Amber
-5) Violet
-6) Slate`;
-    const ans = prompt(msg, "1");
-    if (ans === null) return null;
-    const i = Math.max(1, Math.min(6, parseInt(ans,10) || 1)) - 1;
-    return PALETTE[i];
-  }
-
+  // ---------- style ----------
   function styleSelected(){
     const ids = multi.size ? [...multi] : (selectedNodeId ? [selectedNodeId] : []);
     if (!ids.length){ showToast("Выбери узел (или несколько Ctrl/⌘+клик)"); return; }
 
-    const icon = prompt("Иконка (emoji), например: 💡 ✅ 🧪 🎯 📌 (пусто — убрать):", (ids.length===1 ? (getNode(ids[0]).icon||"") : "💡"));
+    const icon = prompt("Иконка (emoji), например: 💡 ✅ 🧪 🎯 📌 (пусто — убрать):", ids.length===1 ? (getNode(ids[0]).icon||"") : "💡");
     if (icon === null) return;
 
     const pal = pickPalettePrompt();
     if (!pal) return;
 
     const assignGroup = prompt(
-      "Группа: введи название существующей группы, или оставь пусто (не менять). \nЧтобы снять группу — введи: NONE",
+      "Группа: введи название существующей группы, или оставь пусто (не менять).\nЧтобы снять группу — введи: NONE",
       ""
     );
     if (assignGroup === null) return;
 
-    let targetGroupId = null;
     let mode = "keep";
+    let targetGroupId = null;
     const txt = (assignGroup || "").trim();
     if (txt === "") mode = "keep";
     else if (txt.toUpperCase() === "NONE") mode = "clear";
     else {
       const g = state.groups.find(x => (x.name||"").toLowerCase() === txt.toLowerCase());
-      if (!g){
-        showToast("Группы с таким названием нет (создай через кнопку Группа)");
-        return;
-      }
+      if (!g){ showToast("Группы с таким названием нет (создай через кнопку Группа)"); return; }
       targetGroupId = g.id;
       mode = "set";
     }
@@ -831,16 +805,14 @@
     });
 
     save(); render();
-    showToast(ids.length > 1 ? "Стиль применён к узлам" : "Стиль применён");
+    showToast("Стиль применён");
   }
 
-  // ====== Auto layout (radial) ======
+  // ---------- auto layout ----------
   function autoLayout(){
-    // choose root: selected node -> else first node
     const rootId = selectedNodeId || (state.nodes[0] && state.nodes[0].id);
     if (!rootId){ showToast("Нет узлов"); return; }
 
-    // build adjacency
     const adj = new Map();
     for (const n of state.nodes) adj.set(n.id, []);
     for (const l of state.links){
@@ -849,7 +821,6 @@
       adj.get(l.b).push(l.a);
     }
 
-    // BFS spanning tree (avoid cycles)
     const parent = new Map();
     const children = new Map();
     for (const n of state.nodes) children.set(n.id, []);
@@ -859,8 +830,7 @@
     const seen = new Set([rootId]);
     while(q.length){
       const v = q.shift();
-      const neigh = adj.get(v) || [];
-      for (const u of neigh){
+      for (const u of (adj.get(v)||[])){
         if (seen.has(u)) continue;
         seen.add(u);
         parent.set(u, v);
@@ -869,36 +839,34 @@
       }
     }
 
-    // subtree sizes
     const size = new Map();
     function dfs(v){
       let s = 1;
-      for (const c of children.get(v) || []) s += dfs(c);
+      for (const c of (children.get(v)||[])) s += dfs(c);
       size.set(v, s);
       return s;
     }
     dfs(rootId);
 
-    // place nodes: root at center of current view
     const r = svg.getBoundingClientRect();
     const center = clientToWorld(r.left + r.width/2, r.top + r.height/2);
+
     const ring = 170;
     const jitter = 6;
 
-    // angles allocation by subtree weights
     function place(v, depth, a0, a1){
       const n = getNode(v);
       if (!n) return;
 
       const ang = (a0 + a1) / 2;
-      const radius = depth * ring;
+      const rad = depth * ring;
 
       if (depth === 0){
         n.x = center.x - n.w/2;
         n.y = center.y - n.h/2;
       } else {
-        const x = center.x + Math.cos(ang) * radius;
-        const y = center.y + Math.sin(ang) * radius;
+        const x = center.x + Math.cos(ang) * rad;
+        const y = center.y + Math.sin(ang) * rad;
         n.x = x - n.w/2 + (Math.random()*2-1)*jitter;
         n.y = y - n.h/2 + (Math.random()*2-1)*jitter;
       }
@@ -906,7 +874,6 @@
       const kids = children.get(v) || [];
       if (!kids.length) return;
 
-      // distribute angles across [a0, a1] proportionally to subtree sizes
       const total = kids.reduce((acc,c)=> acc + (size.get(c)||1), 0);
       let cur = a0;
       for (const c of kids){
@@ -918,17 +885,13 @@
       }
     }
 
-    // if only root has no children, still ok
-    // allocate full circle, but reserve a small gap for readability
     place(rootId, 0, -Math.PI + 0.2, Math.PI - 0.2);
 
-    // also place disconnected components (no path from root)
     const placed = new Set([rootId]);
     for (const [k] of parent.entries()) placed.add(k);
 
     const unplaced = state.nodes.filter(n => !placed.has(n.id)).map(n=>n.id);
     if (unplaced.length){
-      // pack them around outer ring on the right
       const baseR = 3 * ring;
       unplaced.forEach((id, i) => {
         const n = getNode(id);
@@ -941,13 +904,40 @@
       });
     }
 
-    // ensure groups still look good (they auto-bounds)
     save(); render();
     showToast("Авто-раскладка готова");
   }
 
-  // ====== Events ======
-  // Background: click clears selection; double click creates node
+  // ---------- hit tests ----------
+  function findNodeFromEvent(e){
+    const path = e.composedPath ? e.composedPath() : [];
+    for (const el of path){
+      if (!el || !el.getAttribute) continue;
+      const id = el.getAttribute("data-node-id");
+      if (id) return id;
+    }
+    return null;
+  }
+  function findGroupFromEvent(e){
+    const path = e.composedPath ? e.composedPath() : [];
+    for (const el of path){
+      if (!el || !el.getAttribute) continue;
+      const id = el.getAttribute("data-group-id");
+      if (id) return id;
+    }
+    return null;
+  }
+  function findLinkFromEvent(e){
+    const path = e.composedPath ? e.composedPath() : [];
+    for (const el of path){
+      if (!el || !el.getAttribute) continue;
+      const id = el.getAttribute("data-link-id");
+      if (id) return id;
+    }
+    return null;
+  }
+
+  // ---------- pointer events ----------
   svg.addEventListener("pointerdown", (e) => {
     if (isSpaceDown){
       drag = { type:"pan", sx:e.clientX, sy:e.clientY, ox:state.view.x, oy:state.view.y };
@@ -955,18 +945,20 @@
       wrap.style.cursor = "grabbing";
       return;
     }
-    // click on empty: clear selection & multi
-    if (!findNodeFromEvent(e) && !findGroupFromEvent(e) && !findLinkFromEvent(e)){
+
+    const hitNode = findNodeFromEvent(e);
+    const hitGroup = findGroupFromEvent(e);
+    const hitLink = findLinkFromEvent(e);
+
+    if (!hitNode && !hitGroup && !hitLink){
       multi.clear();
       clearSelection();
     }
   });
 
   svg.addEventListener("dblclick", (e) => {
-    // Create node at cursor
     const p = clientToWorld(e.clientX, e.clientY);
-    const id = addNode(p.x - 60, p.y - 22, "Новая идея", "", "💡", PALETTE[0]);
-    // if you had a selected node and not multi, you can quickly link by holding Shift instead
+    addNode(p.x - 60, p.y - 22, "Новая идея", "", "💡", PALETTE[0]);
   });
 
   svg.addEventListener("pointermove", (e) => {
@@ -974,7 +966,8 @@
 
     if (linkDraft){
       const p = clientToWorld(e.clientX, e.clientY);
-      linkDraft.x = p.x; linkDraft.y = p.y;
+      linkDraft.x = p.x;
+      linkDraft.y = p.y;
       render();
       return;
     }
@@ -982,12 +975,11 @@
     if (drag.type === "node"){
       const dx = (e.clientX - drag.sx) / state.view.k;
       const dy = (e.clientY - drag.sy) / state.view.k;
-
-      for (const item of drag.ox){
-        const n = getNode(item.id);
+      for (const b of drag.base){
+        const n = getNode(b.id);
         if (!n) continue;
-        n.x = item.x + dx;
-        n.y = item.y + dy;
+        n.x = b.x + dx;
+        n.y = b.y + dy;
       }
       render();
       return;
@@ -996,17 +988,17 @@
     if (drag.type === "group"){
       const dx = (e.clientX - drag.sx) / state.view.k;
       const dy = (e.clientY - drag.sy) / state.view.k;
-      // move all nodes in group
-      const ids = drag.movedIds || [];
-      // snapshot base positions on first move
-      if (!drag.ox){
-        drag.ox = ids.map(id => ({id, x:getNode(id)?.x||0, y:getNode(id)?.y||0}));
+      if (!drag.base){
+        drag.base = (drag.movedIds||[]).map(id => {
+          const n = getNode(id);
+          return { id, x:n.x, y:n.y };
+        });
       }
-      for (const item of drag.ox){
-        const n = getNode(item.id);
+      for (const b of drag.base){
+        const n = getNode(b.id);
         if (!n) continue;
-        n.x = item.x + dx;
-        n.y = item.y + dy;
+        n.x = b.x + dx;
+        n.y = b.y + dy;
       }
       render();
       return;
@@ -1044,37 +1036,20 @@
     }
   });
 
-  function findNodeFromEvent(e){
-    const path = e.composedPath ? e.composedPath() : [];
-    for (const el of path){
-      if (!el || !el.getAttribute) continue;
-      const id = el.getAttribute("data-node-id");
-      if (id) return id;
-    }
-    return null;
-  }
+  // long-press edit (mobile)
+  svg.addEventListener("pointerdown", (e) => {
+    const nodeId = findNodeFromEvent(e);
+    if (!nodeId) return;
+    clearTimeout(pressTimer);
+    pressTimer = setTimeout(() => {
+      selectNode(nodeId);
+      editSelected();
+    }, 560);
+  });
+  svg.addEventListener("pointerup", () => clearTimeout(pressTimer));
+  svg.addEventListener("pointercancel", () => clearTimeout(pressTimer));
 
-  function findGroupFromEvent(e){
-    const path = e.composedPath ? e.composedPath() : [];
-    for (const el of path){
-      if (!el || !el.getAttribute) continue;
-      const id = el.getAttribute("data-group-id");
-      if (id) return id;
-    }
-    return null;
-  }
-
-  function findLinkFromEvent(e){
-    const path = e.composedPath ? e.composedPath() : [];
-    for (const el of path){
-      if (!el || !el.getAttribute) continue;
-      const id = el.getAttribute("data-link-id");
-      if (id) return id;
-    }
-    return null;
-  }
-
-  // Zoom
+  // ---------- zoom ----------
   wrap.addEventListener("wheel", (e) => {
     e.preventDefault();
     const delta = Math.sign(e.deltaY);
@@ -1087,19 +1062,14 @@
     const vx = e.clientX - r.left;
     const vy = e.clientY - r.top;
 
-    const nx = vx - before.x * nk;
-    const ny = vy - before.y * nk;
-
     state.view.k = nk;
-    state.view.x = nx;
-    state.view.y = ny;
+    state.view.x = vx - before.x * nk;
+    state.view.y = vy - before.y * nk;
 
     render(); save();
   }, {passive:false});
 
-  // Keyboard shortcuts
-  let isSpaceDown = false;
-
+  // ---------- keys ----------
   window.addEventListener("keydown", (e) => {
     if (e.code === "Space"){
       isSpaceDown = true;
@@ -1130,24 +1100,10 @@
     }
   });
 
-  // Improve touch: long-press edit on mobile
-  let pressTimer = null;
-  svg.addEventListener("pointerdown", (e) => {
-    const nodeId = findNodeFromEvent(e);
-    if (!nodeId) return;
-    clearTimeout(pressTimer);
-    pressTimer = setTimeout(() => {
-      selectNode(nodeId);
-      editSelected();
-    }, 560);
-  });
-  svg.addEventListener("pointerup", () => clearTimeout(pressTimer));
-  svg.addEventListener("pointercancel", () => clearTimeout(pressTimer));
-
-  // ====== Buttons ======
+  // ---------- actions ----------
   document.getElementById("addRoot").addEventListener("click", () => {
     if (state.nodes.length === 0){
-      addNode(240, 180, "Центральная идея", "двойной клик — новый узел", "🎯", PALETTE[0]);
+      addNode(240, 180, "Центральная идея", "Shift+клик: связь • Ctrl/⌘+клик: мультивыбор", "🎯", PALETTE[0]);
       showToast("Создан центр");
     } else {
       const r = svg.getBoundingClientRect();
@@ -1158,10 +1114,7 @@
   });
 
   document.getElementById("addChild").addEventListener("click", () => {
-    if (!selectedNodeId){
-      showToast("Сначала выбери родителя");
-      return;
-    }
+    if (!selectedNodeId){ showToast("Сначала выбери родителя"); return; }
     const parent = getNode(selectedNodeId);
     const pal = parent?.style ? parent.style : PALETTE[0];
     const id = addNode(parent.x + parent.w + 70, parent.y + 10, "Дочерняя идея", "", "✅", pal);
@@ -1209,7 +1162,7 @@
     showToast("Очищено");
   });
 
-  // ====== Init ======
+  // ---------- init ----------
   const ok = load();
   if (!ok){
     fitDefault();
