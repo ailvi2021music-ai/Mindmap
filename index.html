@@ -8,7 +8,6 @@
   <style>
     :root{
       --text:#0b1324;
-      --muted:rgba(11,19,36,.60);
       --stroke:rgba(11,19,36,.12);
       --shadow: 0 18px 60px rgba(10,20,40,.14);
       --grid:rgba(10,20,40,.06);
@@ -17,6 +16,8 @@
       --toolStroke:rgba(255,255,255,.10);
       --glass: rgba(255,255,255,.72);
       --glass2: rgba(255,255,255,.82);
+      --triggerBg: rgba(20,28,40,.88);
+      --triggerStroke: rgba(255,255,255,.14);
     }
 
     *{ box-sizing:border-box; }
@@ -137,7 +138,6 @@
       user-select:none;
       -webkit-user-select:none;
     }
-    /* When editing, allow text selection in the scene */
     #scene.allowSelect{
       user-select:text;
       -webkit-user-select:text;
@@ -205,6 +205,9 @@
       -webkit-box-orient:vertical;
       word-break: break-word;
       cursor: default;
+      text-align: left;
+      font-weight: 400;
+      font-style: normal;
     }
 
     .node.editing{
@@ -223,7 +226,7 @@
       white-space: pre-wrap;
     }
 
-    /* New collapse dot: hollow/filled circle with node color */
+    /* Collapse dot as hollow/filled circle */
     .collapseDot{
       position:absolute;
       width: 18px; height: 18px;
@@ -248,15 +251,38 @@
       opacity: .70;
     }
 
+    /* Small trigger (⋯) under selected node */
+    .menuTrigger{
+      position:fixed;
+      z-index:95;
+      display:none;
+      width: 34px; height: 24px;
+      border-radius: 999px;
+      background: var(--triggerBg);
+      border:1px solid var(--triggerStroke);
+      box-shadow: var(--shadow);
+      color: rgba(255,255,255,.92);
+      align-items:center;
+      justify-content:center;
+      font-size: 16px;
+      cursor:pointer;
+      user-select:none;
+      -webkit-user-select:none;
+      backdrop-filter: blur(10px);
+    }
+    .menuTrigger:hover{
+      border-color: rgba(89,195,255,.45);
+    }
+
     .ctx{
-      position:absolute;
-      z-index:90;
+      position:fixed;
+      z-index:96;
       background: var(--tool);
       color: var(--toolText);
       border:1px solid var(--toolStroke);
       border-radius:14px;
       box-shadow: var(--shadow);
-      display:flex;
+      display:none;
       gap:6px;
       padding:8px;
       align-items:center;
@@ -274,6 +300,10 @@
       font-size:16px;
     }
     .ctx .cbtn:hover{ border-color: rgba(89,195,255,.50); }
+    .ctx .cbtn.on{
+      border-color: rgba(89,195,255,.70);
+      box-shadow: 0 0 0 2px rgba(89,195,255,.18) inset;
+    }
     .ctx .csep{ width:1px; height:22px; background: rgba(255,255,255,.12); margin:0 2px; }
     .ctx .label{ font-size:12px; color: rgba(255,255,255,.70); padding:0 6px 0 2px; }
 
@@ -328,16 +358,33 @@
       <div class="toolbtn" data-tool="center"><span>🎯</span><div class="toolhint">Center on selection (C)</div></div>
     </div>
 
-    <div class="ctx" id="ctx" style="display:none;">
+    <!-- Trigger under selected node -->
+    <div class="menuTrigger" id="menuTrigger" title="Меню">⋯</div>
+
+    <!-- Context menu (opens only via trigger) -->
+    <div class="ctx" id="ctx">
       <div class="label">Узел</div>
       <div class="cbtn" id="ctxChild" title="Дочерний">↳</div>
       <div class="cbtn" id="ctxSibling" title="Соседний">↦</div>
       <div class="cbtn" id="ctxRename" title="Редактировать">✏️</div>
+
       <div class="csep"></div>
+
+      <div class="cbtn" id="ctxBold" title="Жирный"><b>B</b></div>
+      <div class="cbtn" id="ctxItalic" title="Курсив"><i>I</i></div>
+      <div class="csep"></div>
+      <div class="cbtn" id="ctxAlignL" title="По левому">⇤</div>
+      <div class="cbtn" id="ctxAlignC" title="По центру">≡</div>
+      <div class="cbtn" id="ctxAlignR" title="По правому">⇥</div>
+
+      <div class="csep"></div>
+
       <div class="cbtn" id="ctxColor" title="Цвет">🎨</div>
       <div class="cbtn" id="ctxIcon" title="Иконка">😊</div>
       <div class="cbtn" id="ctxCollapse" title="Свернуть/развернуть">⤵️</div>
+
       <div class="csep"></div>
+
       <div class="cbtn" id="ctxDelete" title="Удалить">🗑️</div>
       <div class="cbtn" id="ctxClose" title="Закрыть">✖</div>
     </div>
@@ -355,7 +402,7 @@
 
 <script>
 (() => {
-  const STORE_KEY = "mindmap_projects_v3";
+  const STORE_KEY = "mindmap_projects_v4";
 
   const PALETTE = [
     {name:"Sky",    fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.62)"},
@@ -374,7 +421,10 @@
   const linksSvg = document.getElementById("links");
   const nodesLayer = document.getElementById("nodes");
   const toast = document.getElementById("toast");
+
   const ctx = document.getElementById("ctx");
+  const menuTrigger = document.getElementById("menuTrigger");
+  let ctxOpen = false;
 
   const projectSelect = document.getElementById("projectSelect");
   const importOne = document.getElementById("importOne");
@@ -445,6 +495,10 @@
       n.childColorNext ||= 0;
       n.parentId = n.parentId || null;
       n.collapsed = !!n.collapsed;
+
+      // NEW: font style
+      n.fmt ||= { bold:false, italic:false, align:"left" };
+
       const m = measureNode(n.text);
       n.w = m.w; n.h = m.h;
     });
@@ -465,7 +519,8 @@
       style:{fill: PALETTE[0].fill, stroke: PALETTE[0].stroke},
       childColorNext:0,
       parentId:null,
-      collapsed:false
+      collapsed:false,
+      fmt:{bold:false, italic:false, align:"left"}
     });
 
     const p = { id, name, createdAt: nowTs(), updatedAt: nowTs(), data };
@@ -501,6 +556,7 @@
     selectedId = null;
     editingId = null;
     drag = null;
+    closeCtx();
     saveStore();
     rebuildProjectSelect();
     renderAll();
@@ -547,9 +603,11 @@
       style: {fill: style.fill, stroke: style.stroke},
       childColorNext: 0,
       parentId: null,
-      collapsed: false
+      collapsed: false,
+      fmt:{bold:false, italic:false, align:"left"}
     });
     selectedId = id;
+    closeCtx();
     autosave();
     renderAll();
     return id;
@@ -576,11 +634,13 @@
       style:{fill: style.fill, stroke: style.stroke},
       childColorNext: 0,
       parentId: parentId,
-      collapsed:false
+      collapsed:false,
+      fmt:{bold:false, italic:false, align:"left"}
     });
     addLink(parentId, id);
 
     selectedId = id;
+    closeCtx();
     autosave();
     renderAll();
     return id;
@@ -604,11 +664,13 @@
       style: n.style ? {fill:n.style.fill, stroke:n.style.stroke} : {fill:PALETTE[0].fill, stroke:PALETTE[0].stroke},
       childColorNext: 0,
       parentId,
-      collapsed:false
+      collapsed:false,
+      fmt:{bold:false, italic:false, align:"left"}
     });
     if (parentId) addLink(parentId, id);
 
     selectedId = id;
+    closeCtx();
     autosave();
     renderAll();
     return id;
@@ -626,6 +688,7 @@
     map.nodes = map.nodes.filter(n => !ids.has(n.id));
     map.links = map.links.filter(l => !ids.has(l.a) && !ids.has(l.b));
     if (selectedId && ids.has(selectedId)) selectedId = null;
+    closeCtx();
     autosave();
     renderAll();
   }
@@ -700,6 +763,14 @@
     });
   }
 
+  function applyNodeFmt(nodeEl, n){
+    const textEl = nodeEl.querySelector(".text");
+    const fmt = n.fmt || {bold:false, italic:false, align:"left"};
+    textEl.style.fontWeight = fmt.bold ? "700" : "400";
+    textEl.style.fontStyle = fmt.italic ? "italic" : "normal";
+    textEl.style.textAlign = fmt.align || "left";
+  }
+
   function renderNodes(){
     nodesLayer.innerHTML = "";
 
@@ -726,16 +797,25 @@
 
       div.appendChild(icon);
       div.appendChild(text);
+      applyNodeFmt(div, n);
 
+      // Click selects ONLY (does not open menu)
       div.addEventListener("pointerdown", (e) => {
-        // when editing allow selection; don't steal pointer
         if (editingId) return;
-
         e.preventDefault();
-        selectedId = n.id;
-        renderSelectionOnly();
-        positionCtx();
 
+        selectedId = n.id;
+        ctxOpen = false;
+        ctx.style.display = "none";
+        renderSelectionOnly();
+        positionTriggerAndCtx();
+        updateCtxToggles();
+      });
+
+      // Drag move
+      div.addEventListener("pointerdown", (e) => {
+        if (editingId) return;
+        // already prevented default above, but keep flow safe
         drag = {
           kind: "node",
           nodeId: n.id,
@@ -745,7 +825,7 @@
           baseX: n.x, baseY: n.y
         };
         div.setPointerCapture(e.pointerId);
-      });
+      }, {passive:false});
 
       div.addEventListener("pointermove", (e) => {
         if (!drag || drag.kind !== "node" || drag.pointerId !== e.pointerId || drag.nodeId !== n.id) return;
@@ -772,7 +852,7 @@
         }
 
         drawLinks();
-        positionCtx();
+        positionTriggerAndCtx();
         autosave();
       });
 
@@ -782,6 +862,7 @@
         }
       }
 
+      // Double/Triple click logic (microstep)
       div.addEventListener("pointerup", (e) => {
         const moved = !!(drag && drag.kind === "node" && drag.pointerId === e.pointerId && drag.moved);
         endNodeDrag(e);
@@ -797,8 +878,20 @@
         if (tap.timer) clearTimeout(tap.timer);
         tap.timer = setTimeout(() => {
           if (tap.id !== n.id) return;
-          if (tap.count === 2) addChildFrom(n.id);
-          else if (tap.count >= 3) beginEdit(n.id, true); // true = select all on enter
+
+          // DOUBLE CLICK: create child + start editing it
+          if (tap.count === 2){
+            const childId = addChildFrom(n.id);
+            if (childId){
+              // open edit instantly
+              beginEdit(childId, true);
+            }
+          }
+          // TRIPLE+: edit this node
+          else if (tap.count >= 3){
+            beginEdit(n.id, true);
+          }
+
           tap.id = null; tap.count = 0; tap.timer = null;
         }, TAP_WINDOW + 30);
       });
@@ -808,6 +901,7 @@
 
       nodesLayer.appendChild(div);
 
+      // Collapse dot (tree)
       const kids = childrenOf(n.id);
       if (kids.length){
         const dot = document.createElement("div");
@@ -816,13 +910,12 @@
         dot.style.left = (n.x + n.w + 10) + "px";
         dot.style.top  = (n.y + n.h/2 - 9) + "px";
 
-        // dot color from node stroke (fallback)
         const stroke = (n.style && n.style.stroke) ? n.style.stroke : "rgba(11,19,36,.22)";
         dot.style.borderColor = stroke;
 
         const inner = document.createElement("div");
         inner.className = "inner";
-        inner.style.background = stroke;          // filled uses opacity rules in CSS
+        inner.style.background = stroke;
         dot.appendChild(inner);
 
         dot.addEventListener("pointerdown", (e) => {
@@ -839,64 +932,99 @@
     applyTransform();
     drawLinks();
     renderNodes();
-    positionCtx();
+    positionTriggerAndCtx();
+    updateCtxToggles();
   }
 
-  // ===== Context toolbar position: close to node, flip if needed =====
-  function positionCtx(){
-    if (!selectedId) { ctx.style.display = "none"; return; }
+  function closeCtx(){
+    ctxOpen = false;
+    ctx.style.display = "none";
+    menuTrigger.style.display = "none";
+  }
+
+  // Trigger + menu positioning (relative to selected node)
+  function positionTriggerAndCtx(){
+    if (!selectedId) { closeCtx(); return; }
+
     const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(selectedId)}"]`);
     const n = getNode(selectedId);
-    if (!nodeEl || !n || isHiddenByCollapse(selectedId)) { ctx.style.display = "none"; return; }
+    if (!nodeEl || !n || isHiddenByCollapse(selectedId)) { closeCtx(); return; }
 
     const rect = nodeEl.getBoundingClientRect();
-    const ctxW = 360;
-    const ctxH = 52;
-    const gap = 3;
-
     const headerRect = topbar.getBoundingClientRect();
     const safeTop = headerRect.bottom + 6;
 
-    // Prefer below
-    let top = rect.bottom + gap;
-    // If it doesn't fit below, place above
-    if (top + ctxH > window.innerHeight - 8){
-      top = rect.top - ctxH - gap;
+    // Trigger under node, centered
+    const trigW = 34, trigH = 24, trigGap = 2;
+    let tx = rect.left + rect.width/2 - trigW/2;
+    let ty = rect.bottom + trigGap;
+
+    // If trigger would go outside bottom, place it above node
+    if (ty + trigH > window.innerHeight - 8){
+      ty = rect.top - trigH - trigGap;
     }
-    // Clamp not under header
-    top = Math.max(safeTop, top);
+    // Keep it below header if placed above
+    ty = Math.max(safeTop, ty);
 
-    let left = rect.left + rect.width/2 - ctxW/2;
-    left = Math.max(12, Math.min(window.innerWidth - ctxW - 12, left));
+    tx = Math.max(10, Math.min(window.innerWidth - trigW - 10, tx));
 
-    ctx.style.display = "flex";
-    ctx.style.left = left + "px";
-    ctx.style.top  = top + "px";
+    menuTrigger.style.left = tx + "px";
+    menuTrigger.style.top  = ty + "px";
+    menuTrigger.style.display = "flex";
 
-    document.getElementById("ctxCollapse").style.opacity = childrenOf(selectedId).length ? "1" : ".45";
+    // Menu pops near trigger (not far)
+    const ctxW = 520; // wide because we added typography controls
+    const ctxH = 52;
+    const gap = 4;
+
+    let cx = rect.left + rect.width/2 - ctxW/2;
+    cx = Math.max(12, Math.min(window.innerWidth - ctxW - 12, cx));
+
+    // Prefer below trigger
+    let cy = ty + trigH + gap;
+    // If not enough space, place above trigger
+    if (cy + ctxH > window.innerHeight - 8){
+      cy = ty - ctxH - gap;
+    }
+    cy = Math.max(safeTop, cy);
+
+    ctx.style.left = cx + "px";
+    ctx.style.top  = cy + "px";
+    ctx.style.display = ctxOpen ? "flex" : "none";
   }
 
-  document.getElementById("ctxChild").onclick = () => { if (selectedId) addChildFrom(selectedId); };
-  document.getElementById("ctxSibling").onclick = () => { if (selectedId) addSiblingFrom(selectedId); };
-  document.getElementById("ctxRename").onclick = () => { if (selectedId) beginEdit(selectedId, true); };
-  document.getElementById("ctxColor").onclick = () => {
-    const n = getNode(selectedId); if (!n) return;
-    const i = PALETTE.findIndex(p => p.fill === n.style.fill && p.stroke === n.style.stroke);
-    const next = PALETTE[(Math.max(0,i)+1) % PALETTE.length];
-    n.style = {fill: next.fill, stroke: next.stroke};
-    autosave(); renderAll();
-  };
-  document.getElementById("ctxIcon").onclick = () => {
-    const n = getNode(selectedId); if (!n) return;
-    const i = ICONS.indexOf(n.icon);
-    n.icon = ICONS[(i+1+ICONS.length) % ICONS.length];
-    autosave(); renderAll();
-  };
-  document.getElementById("ctxCollapse").onclick = () => { if (selectedId) toggleCollapse(selectedId); };
-  document.getElementById("ctxDelete").onclick = () => { if (selectedId) deleteSubtree(selectedId); };
-  document.getElementById("ctxClose").onclick = () => { selectedId = null; renderSelectionOnly(); positionCtx(); };
+  menuTrigger.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedId) return;
+    ctxOpen = !ctxOpen;
+    positionTriggerAndCtx();
+    updateCtxToggles();
+  });
 
-  // ===== Inline edit with proper selection =====
+  // Clicking outside closes menu (but keeps selection)
+  document.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".ctx") || e.target.closest(".menuTrigger")) return;
+    if (ctxOpen){
+      ctxOpen = false;
+      positionTriggerAndCtx();
+    }
+  });
+
+  function updateCtxToggles(){
+    const n = selectedId ? getNode(selectedId) : null;
+    if (!n) return;
+    n.fmt ||= {bold:false, italic:false, align:"left"};
+
+    document.getElementById("ctxBold").classList.toggle("on", !!n.fmt.bold);
+    document.getElementById("ctxItalic").classList.toggle("on", !!n.fmt.italic);
+
+    document.getElementById("ctxAlignL").classList.toggle("on", (n.fmt.align||"left")==="left");
+    document.getElementById("ctxAlignC").classList.toggle("on", (n.fmt.align||"left")==="center");
+    document.getElementById("ctxAlignR").classList.toggle("on", (n.fmt.align||"left")==="right");
+  }
+
+  // ===== Inline edit =====
   function selectAllIn(el){
     const range = document.createRange();
     range.selectNodeContents(el);
@@ -914,7 +1042,7 @@
     drag = null;
     editingId = id;
 
-    scene.classList.add("allowSelect"); // IMPORTANT: let mouse selection work
+    scene.classList.add("allowSelect");
     nodeEl.classList.add("editing");
 
     const textEl = nodeEl.querySelector(".text");
@@ -922,17 +1050,7 @@
     textEl.textContent = n.text || "";
     textEl.focus();
 
-    // either select all or put caret to end
-    if (selectAll){
-      selectAllIn(textEl);
-    } else {
-      const range = document.createRange();
-      range.selectNodeContents(textEl);
-      range.collapse(false);
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(range);
-    }
+    if (selectAll) selectAllIn(textEl);
 
     const finish = (saveChanges) => {
       textEl.removeEventListener("keydown", onKey);
@@ -951,13 +1069,12 @@
       nodeEl.classList.remove("editing");
       editingId = null;
 
-      scene.classList.remove("allowSelect"); // restore
+      scene.classList.remove("allowSelect");
       autosave();
       renderAll();
     };
 
     const onKey = (e) => {
-      // Ctrl/Cmd + A inside editor
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a"){
         e.preventDefault();
         selectAllIn(textEl);
@@ -974,11 +1091,72 @@
     textEl.addEventListener("blur", onBlur);
   }
 
+  // ===== Context actions =====
+  document.getElementById("ctxChild").onclick = () => {
+    if (!selectedId) return;
+    const id = addChildFrom(selectedId);
+    if (id) beginEdit(id, true);
+  };
+  document.getElementById("ctxSibling").onclick = () => {
+    if (!selectedId) return;
+    const id = addSiblingFrom(selectedId);
+    if (id) beginEdit(id, true);
+  };
+  document.getElementById("ctxRename").onclick = () => { if (selectedId) beginEdit(selectedId, true); };
+
+  document.getElementById("ctxBold").onclick = () => {
+    const n = getNode(selectedId); if (!n) return;
+    n.fmt ||= {bold:false, italic:false, align:"left"};
+    n.fmt.bold = !n.fmt.bold;
+    autosave(); renderAll();
+  };
+  document.getElementById("ctxItalic").onclick = () => {
+    const n = getNode(selectedId); if (!n) return;
+    n.fmt ||= {bold:false, italic:false, align:"left"};
+    n.fmt.italic = !n.fmt.italic;
+    autosave(); renderAll();
+  };
+  document.getElementById("ctxAlignL").onclick = () => {
+    const n = getNode(selectedId); if (!n) return;
+    n.fmt ||= {bold:false, italic:false, align:"left"};
+    n.fmt.align = "left";
+    autosave(); renderAll();
+  };
+  document.getElementById("ctxAlignC").onclick = () => {
+    const n = getNode(selectedId); if (!n) return;
+    n.fmt ||= {bold:false, italic:false, align:"left"};
+    n.fmt.align = "center";
+    autosave(); renderAll();
+  };
+  document.getElementById("ctxAlignR").onclick = () => {
+    const n = getNode(selectedId); if (!n) return;
+    n.fmt ||= {bold:false, italic:false, align:"left"};
+    n.fmt.align = "right";
+    autosave(); renderAll();
+  };
+
+  document.getElementById("ctxColor").onclick = () => {
+    const n = getNode(selectedId); if (!n) return;
+    const i = PALETTE.findIndex(p => p.fill === n.style.fill && p.stroke === n.style.stroke);
+    const next = PALETTE[(Math.max(0,i)+1) % PALETTE.length];
+    n.style = {fill: next.fill, stroke: next.stroke};
+    autosave(); renderAll();
+  };
+  document.getElementById("ctxIcon").onclick = () => {
+    const n = getNode(selectedId); if (!n) return;
+    const i = ICONS.indexOf(n.icon);
+    n.icon = ICONS[(i+1+ICONS.length) % ICONS.length];
+    autosave(); renderAll();
+  };
+  document.getElementById("ctxCollapse").onclick = () => { if (selectedId) toggleCollapse(selectedId); };
+  document.getElementById("ctxDelete").onclick = () => { if (selectedId) deleteSubtree(selectedId); };
+  document.getElementById("ctxClose").onclick = () => { ctxOpen = false; positionTriggerAndCtx(); };
+
   // ===== Scene pan/zoom =====
   scene.addEventListener("pointerdown", (e) => {
     pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
 
-    const onNode = !!e.target.closest(".node") || !!e.target.closest(".collapseDot") || !!e.target.closest(".ctx");
+    const onNode = !!e.target.closest(".node") || !!e.target.closest(".collapseDot") || !!e.target.closest(".ctx") || !!e.target.closest(".menuTrigger");
     if (!onNode){
       if (editingId){
         const editor = nodesLayer.querySelector(`.node[data-id="${CSS.escape(editingId)}"] .text`);
@@ -991,9 +1169,11 @@
         return;
       }
 
+      // clicking empty space deselects
       selectedId = null;
+      ctxOpen = false;
       renderSelectionOnly();
-      positionCtx();
+      closeCtx();
 
       drag = {
         kind:"pan",
@@ -1035,7 +1215,7 @@
       map.view.y = vy - before.y * nk;
 
       applyTransform();
-      positionCtx();
+      positionTriggerAndCtx();
       autosave();
       return;
     }
@@ -1052,7 +1232,7 @@
     map.view.x = drag.startViewX + dx;
     map.view.y = drag.startViewY + dy;
     applyTransform();
-    positionCtx();
+    positionTriggerAndCtx();
     autosave();
   });
 
@@ -1083,14 +1263,15 @@
     map.view.y = vy - before.y * nk;
 
     applyTransform();
-    positionCtx();
+    positionTriggerAndCtx();
     autosave();
   }, {passive:false});
 
   scene.addEventListener("dblclick", (e) => {
-    if (e.target.closest(".node") || e.target.closest(".collapseDot") || e.target.closest(".ctx")) return;
+    if (e.target.closest(".node") || e.target.closest(".collapseDot") || e.target.closest(".ctx") || e.target.closest(".menuTrigger")) return;
     const p = clientToWorld(e.clientX, e.clientY);
-    addNodeAt(p.x - 90, p.y - 30, "Новая идея", "💡", PALETTE[0]);
+    const id = addNodeAt(p.x - 90, p.y - 30, "Новая идея", "💡", PALETTE[0]);
+    beginEdit(id, true);
   });
 
   // Tools
@@ -1113,7 +1294,7 @@
     map.view.x = cx - (n.x + n.w/2) * map.view.k;
     map.view.y = cy - (n.y + n.h/2) * map.view.k;
     applyTransform();
-    positionCtx();
+    positionTriggerAndCtx();
     autosave();
     setTool("select");
   }
@@ -1200,7 +1381,7 @@
   document.getElementById("resetView").onclick = () => {
     map.view = {x:24,y:24,k:1};
     applyTransform();
-    positionCtx();
+    positionTriggerAndCtx();
     autosave();
     showToast("Сброшено");
   };
@@ -1209,7 +1390,7 @@
   document.getElementById("exportOne").onclick = () => {
     if (!active) return;
     commitMap();
-    const payload = { kind:"mindmap_project", version:3, project: store.projects[store.activeId] };
+    const payload = { kind:"mindmap_project", version:4, project: store.projects[store.activeId] };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1249,7 +1430,7 @@
 
   document.getElementById("exportAll").onclick = () => {
     commitMap();
-    const payload = { kind:"mindmap_store", version:3, store };
+    const payload = { kind:"mindmap_store", version:4, store };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1301,13 +1482,23 @@
     if (k === "c") setTool("center");
 
     if (e.key === "Tab" && selectedId && !editingId){
-      e.preventDefault(); addChildFrom(selectedId);
+      e.preventDefault();
+      const id = addChildFrom(selectedId);
+      if (id) beginEdit(id, true);
     }
     if (e.key === "Enter" && selectedId && !editingId){
-      e.preventDefault(); addSiblingFrom(selectedId);
+      e.preventDefault();
+      const id = addSiblingFrom(selectedId);
+      if (id) beginEdit(id, true);
     }
     if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingId){
       e.preventDefault(); deleteSubtree(selectedId);
+    }
+
+    // ESC closes menu
+    if (e.key === "Escape" && ctxOpen){
+      ctxOpen = false;
+      positionTriggerAndCtx();
     }
   });
 
