@@ -11,11 +11,10 @@
       --stroke:rgba(11,19,36,.12);
       --shadow: 0 18px 60px rgba(10,20,40,.14);
       --grid:rgba(10,20,40,.06);
-      --tool:rgba(20,28,40,.88);
+      --tool:rgba(20,28,40,.90);
       --toolText:rgba(255,255,255,.92);
       --toolStroke:rgba(255,255,255,.10);
       --glass: rgba(255,255,255,.72);
-      --glass2: rgba(255,255,255,.82);
     }
 
     *{ box-sizing:border-box; }
@@ -30,6 +29,7 @@
         radial-gradient(1000px 700px at 55% 95%, rgba(60,224,122,.22), transparent 60%),
         linear-gradient(180deg, #f7fbff, #eef4ff 55%, #f8fbff);
       overflow:hidden;
+      -webkit-text-size-adjust: 100%;
     }
 
     .app{ height:100%; display:flex; flex-direction:column; }
@@ -59,12 +59,42 @@
       font: inherit;
       height: 38px;
     }
-    select{ cursor:pointer; }
     .btn:hover, select:hover{ border-color: rgba(89,195,255,.45); }
     .btn:active{ transform: translateY(1px); }
     .btn.primary{ border-color: rgba(89,195,255,.55); }
-    .btn.danger{ border-color: rgba(255,92,122,.55); }
-    .sep{ width:1px; height:26px; background:var(--stroke); margin:0 2px; }
+
+    .menuWrap{ position:relative; }
+    .drop{
+      position:absolute;
+      top: 44px;
+      right: 0;
+      background: rgba(255,255,255,.92);
+      border: 1px solid rgba(11,19,36,.12);
+      border-radius: 14px;
+      box-shadow: var(--shadow);
+      padding: 8px;
+      display:none;
+      min-width: 220px;
+      backdrop-filter: blur(10px);
+      z-index: 200;
+    }
+    .drop .item{
+      width:100%;
+      border: 1px solid rgba(11,19,36,.10);
+      background: rgba(255,255,255,.72);
+      border-radius: 12px;
+      padding: 10px 12px;
+      cursor:pointer;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:center;
+      margin: 6px 0;
+      user-select:none;
+    }
+    .drop .item:hover{ border-color: rgba(89,195,255,.45); }
+
+    input[type="file"]{ display:none; }
 
     .stageWrap{ flex:1; position:relative; overflow:hidden; }
     .stageWrap::before{
@@ -79,55 +109,6 @@
       z-index:0;
     }
 
-    .leftbar{
-      position:absolute;
-      left:14px; top:14px;
-      z-index:80;
-      background: var(--glass2);
-      border:1px solid var(--stroke);
-      border-radius:18px;
-      box-shadow: var(--shadow);
-      padding:10px;
-      display:flex;
-      flex-direction:column;
-      gap:8px;
-      backdrop-filter: blur(10px);
-    }
-    .toolbtn{
-      width:44px; height:44px;
-      border-radius:14px;
-      border:1px solid rgba(11,19,36,.10);
-      background: rgba(255,255,255,.78);
-      cursor:pointer;
-      display:flex; align-items:center; justify-content:center;
-      user-select:none;
-      position:relative;
-    }
-    .toolbtn:hover{ border-color: rgba(89,195,255,.45); }
-    .toolbtn.active{
-      border-color: rgba(89,195,255,.8);
-      box-shadow: 0 0 0 3px rgba(89,195,255,.18) inset;
-    }
-    .toolbtn span{ font-size:18px; }
-    .toolhint{
-      position:absolute;
-      left:58px;
-      top:50%;
-      transform: translateY(-50%);
-      background: rgba(20,28,40,.88);
-      color: rgba(255,255,255,.92);
-      border:1px solid rgba(255,255,255,.10);
-      padding:8px 10px;
-      border-radius:12px;
-      box-shadow: var(--shadow);
-      white-space:nowrap;
-      opacity:0;
-      pointer-events:none;
-      transition: .12s ease;
-      z-index:120;
-    }
-    .toolbtn:hover .toolhint{ opacity:1; }
-
     #scene{
       position:absolute;
       inset:0;
@@ -135,6 +116,7 @@
       touch-action:none;
       user-select:none;
       -webkit-user-select:none;
+      overflow:hidden;
     }
     #scene.allowSelect{
       user-select:text;
@@ -146,6 +128,12 @@
       left:0; top:0;
       transform-origin: 0 0;
       will-change: transform;
+      transform: translate3d(0,0,0) scale(1);
+
+      /* попытка сделать текст чётче при масштабировании */
+      backface-visibility: hidden;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
     }
 
     #links{
@@ -197,20 +185,20 @@
       -webkit-box-orient:vertical;
       word-break: break-word;
       cursor: default;
-      text-align: center; /* default center */
+      text-align: center;
       font-weight: 400;
       font-style: normal;
       width:100%;
     }
 
     .node.editing{
-      cursor: text;
+      cursor:text;
       user-select:text;
       -webkit-user-select:text;
     }
     .node.editing .text{
-      outline: none;
-      cursor: text;
+      outline:none;
+      cursor:text;
       user-select:text;
       -webkit-user-select:text;
       -webkit-line-clamp: unset;
@@ -219,38 +207,17 @@
       white-space: pre-wrap;
     }
 
-    .collapseDot{
+    /* Кнопка ⋯ — теперь внутри WORLD, масштабируется вместе с узлом */
+    .dotsBtn{
       position:absolute;
-      width: 18px; height: 18px;
+      width: 18px;
+      height: 18px;
       border-radius: 999px;
-      box-shadow: 0 10px 18px rgba(10,20,40,.12);
-      cursor: pointer;
-      user-select:none;
-      -webkit-user-select:none;
-      display:flex;
-      align-items:center;
-      justify-content:center;
       background: rgba(255,255,255,.90);
       border: 2px solid rgba(11,19,36,.22);
-    }
-    .collapseDot .inner{
-      width: 10px; height: 10px;
-      border-radius: 999px;
-      background: transparent;
-      opacity: .35;
-    }
-    .collapseDot.collapsed .inner{ opacity: .70; }
-
-    .menuTrigger{
-      position:fixed;
-      z-index:95;
-      display:none;
-      width: 18px; height: 18px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.90);
-      border:2px solid rgba(11,19,36,.22);
       box-shadow: 0 12px 26px rgba(10,20,40,.16);
       color: rgba(11,19,36,.80);
+      display:none;
       align-items:center;
       justify-content:center;
       font-size: 14px;
@@ -259,14 +226,16 @@
       user-select:none;
       -webkit-user-select:none;
       backdrop-filter: blur(10px);
+      z-index: 40;
     }
-    .menuTrigger:hover{
+    .dotsBtn:hover{
       box-shadow: 0 12px 26px rgba(10,20,40,.16), 0 0 0 3px rgba(89,195,255,.16);
     }
 
+    /* Меню действий — тоже внутри WORLD */
     .ctx{
-      position:fixed;
-      z-index:96;
+      position:absolute;
+      z-index:50;
       background: var(--tool);
       color: var(--toolText);
       border:1px solid var(--toolStroke);
@@ -276,9 +245,9 @@
       gap:6px;
       padding:8px;
       align-items:center;
-      backdrop-filter: blur(10px);
       user-select:none;
       -webkit-user-select:none;
+      backdrop-filter: blur(10px);
     }
     .ctx .cbtn{
       width:34px; height:34px;
@@ -298,8 +267,8 @@
     .ctx .label{ font-size:12px; color: rgba(255,255,255,.70); padding:0 6px 0 2px; }
 
     .emojiPop{
-      position:fixed;
-      z-index:97;
+      position:absolute;
+      z-index:60;
       display:none;
       width: 308px;
       max-height: 220px;
@@ -310,17 +279,10 @@
       box-shadow: var(--shadow);
       padding:10px;
       backdrop-filter: blur(10px);
-
-      /* keep scrollbar visually inside rounded corners */
       overscroll-behavior: contain;
       scrollbar-gutter: stable both-edges;
     }
-
-    /* Dark, integrated scrollbar */
-    .emojiPop::-webkit-scrollbar{
-      width: 10px;
-      height: 10px;
-    }
+    .emojiPop::-webkit-scrollbar{ width: 10px; height: 10px; }
     .emojiPop::-webkit-scrollbar-track{
       background: rgba(255,255,255,.06);
       border-radius: 12px;
@@ -331,14 +293,8 @@
       border-radius: 12px;
       border: 2px solid rgba(20,28,40,.92);
     }
-    .emojiPop::-webkit-scrollbar-thumb:hover{
-      background: rgba(255,255,255,.26);
-    }
-    /* Firefox */
-    .emojiPop{
-      scrollbar-color: rgba(255,255,255,.22) rgba(255,255,255,.06);
-      scrollbar-width: thin;
-    }
+    .emojiPop::-webkit-scrollbar-thumb:hover{ background: rgba(255,255,255,.26); }
+    .emojiPop{ scrollbar-color: rgba(255,255,255,.22) rgba(255,255,255,.06); scrollbar-width: thin; }
 
     .emojiGrid{
       display:grid;
@@ -358,6 +314,29 @@
     }
     .emojiCell:hover{ border-color: rgba(89,195,255,.50); }
 
+    .collapseDot{
+      position:absolute;
+      width: 18px; height: 18px;
+      border-radius: 999px;
+      box-shadow: 0 10px 18px rgba(10,20,40,.12);
+      cursor: pointer;
+      user-select:none;
+      -webkit-user-select:none;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      background: rgba(255,255,255,.90);
+      border: 2px solid rgba(11,19,36,.22);
+      z-index: 30;
+    }
+    .collapseDot .inner{
+      width: 10px; height: 10px;
+      border-radius: 999px;
+      background: transparent;
+      opacity: .35;
+    }
+    .collapseDot.collapsed .inner{ opacity: .70; }
+
     .toast{
       position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
       background: rgba(255,255,255,.72);
@@ -372,80 +351,71 @@
       z-index:110;
     }
     .toast.show{ opacity:1; }
-
-    input[type="file"]{ display:none; }
   </style>
 </head>
+
 <body>
 <div class="app">
   <header id="topbar">
     <select id="projectSelect" title="Майндмэп"></select>
     <button class="btn primary" id="projNew">+ Новый</button>
-    <button class="btn" id="projRename">Переименовать</button>
-    <button class="btn" id="projDup">Дублировать</button>
-    <button class="btn danger" id="projDel">Удалить</button>
 
-    <div class="sep"></div>
+    <div class="menuWrap">
+      <button class="btn" id="downloadBtn">Скачать ▾</button>
+      <div class="drop" id="downloadDrop">
+        <div class="item" id="exportOneBtn"><span>Экспорт карты</span><span>JSON</span></div>
+        <label class="item" for="importOne"><span>Импорт карты</span><span>JSON</span></label>
+        <div class="item" id="exportAllBtn"><span>Экспорт всех</span><span>JSON</span></div>
+        <label class="item" for="importAll"><span>Импорт всех</span><span>JSON</span></label>
+      </div>
+    </div>
 
-    <button class="btn" id="autoLayout">Авто-раскладка</button>
-    <button class="btn" id="resetView">Сброс вида</button>
-
-    <div class="sep"></div>
-
-    <button class="btn" id="exportOne">Экспорт карты</button>
-    <label class="btn" for="importOne">Импорт карты</label>
     <input id="importOne" type="file" accept="application/json" />
-
-    <button class="btn" id="exportAll">Экспорт всех</button>
-    <label class="btn" for="importAll">Импорт всех</label>
     <input id="importAll" type="file" accept="application/json" />
   </header>
 
   <div class="stageWrap" id="wrap">
-    <div class="leftbar" id="leftbar">
-      <div class="toolbtn active" data-tool="select"><span>🖱️</span><div class="toolhint">Select (V)</div></div>
-      <div class="toolbtn" data-tool="hand"><span>✋</span><div class="toolhint">Hand/Pan (H)</div></div>
-      <div class="toolbtn" data-tool="node"><span>➕</span><div class="toolhint">Add node (N) — клик по полю</div></div>
-      <div class="toolbtn" data-tool="center"><span>🎯</span><div class="toolhint">Center on selection (C)</div></div>
-    </div>
-
-    <div class="menuTrigger" id="menuTrigger" title="Меню">⋯</div>
-
-    <div class="ctx" id="ctx">
-      <div class="label">Узел</div>
-      <div class="cbtn" id="ctxChild" title="Дочерний">↳</div>
-      <div class="cbtn" id="ctxSibling" title="Соседний">↦</div>
-      <div class="cbtn" id="ctxRename" title="Редактировать">✏️</div>
-
-      <div class="csep"></div>
-
-      <div class="cbtn" id="ctxBold" title="Жирный"><b>B</b></div>
-      <div class="cbtn" id="ctxItalic" title="Курсив"><i>I</i></div>
-      <div class="csep"></div>
-      <div class="cbtn" id="ctxAlignL" title="По левому">⇤</div>
-      <div class="cbtn" id="ctxAlignC" title="По центру">≡</div>
-      <div class="cbtn" id="ctxAlignR" title="По правому">⇥</div>
-
-      <div class="csep"></div>
-
-      <div class="cbtn" id="ctxColor" title="Цвет">🎨</div>
-      <div class="cbtn" id="ctxEmoji" title="Эмодзи в текст">😊</div>
-      <div class="cbtn" id="ctxCollapse" title="Свернуть/развернуть">⤵️</div>
-
-      <div class="csep"></div>
-
-      <div class="cbtn" id="ctxDelete" title="Удалить">🗑️</div>
-      <div class="cbtn" id="ctxClose" title="Закрыть">✖</div>
-    </div>
-
-    <div class="emojiPop" id="emojiPop">
-      <div class="emojiGrid" id="emojiGrid"></div>
-    </div>
-
     <div id="scene">
       <div id="world">
         <svg id="links" xmlns="http://www.w3.org/2000/svg"></svg>
         <div id="nodes"></div>
+
+        <!-- Кнопка ⋯ и меню лежат ВНУТРИ world, значит масштабируются вместе с картой -->
+        <div class="dotsBtn" id="dotsBtn" title="Меню">⋯</div>
+
+        <div class="ctx" id="ctx">
+          <div class="label">Узел</div>
+          <div class="cbtn" id="ctxChild" title="Дочерний">↳</div>
+          <div class="cbtn" id="ctxSibling" title="Соседний">↦</div>
+          <div class="cbtn" id="ctxRename" title="Редактировать">✏️</div>
+
+          <div class="csep"></div>
+
+          <div class="cbtn" id="ctxBold" title="Жирный"><b>B</b></div>
+          <div class="cbtn" id="ctxItalic" title="Курсив"><i>I</i></div>
+
+          <div class="csep"></div>
+
+          <div class="cbtn" id="ctxAlignL" title="По левому">⇤</div>
+          <div class="cbtn" id="ctxAlignC" title="По центру">≡</div>
+          <div class="cbtn" id="ctxAlignR" title="По правому">⇥</div>
+
+          <div class="csep"></div>
+
+          <div class="cbtn" id="ctxColor" title="Цвет">🎨</div>
+          <div class="cbtn" id="ctxEmoji" title="Эмодзи в текст">😊</div>
+          <div class="cbtn" id="ctxCollapse" title="Свернуть/развернуть">⤵️</div>
+
+          <div class="csep"></div>
+
+          <div class="cbtn" id="ctxDelete" title="Удалить">🗑️</div>
+          <div class="cbtn" id="ctxClose" title="Закрыть">✖</div>
+        </div>
+
+        <div class="emojiPop" id="emojiPop">
+          <div class="emojiGrid" id="emojiGrid"></div>
+        </div>
+
       </div>
     </div>
 
@@ -455,9 +425,7 @@
 
 <script>
 (() => {
-  const STORE_KEY = "mindmap_projects_v6";
-
-  const TRIGGER_HOLD_MS = 1600; // удержание кнопки после ухода курсора
+  const STORE_KEY = "mindmap_projects_v7";
 
   const PALETTE = [
     {name:"Sky",    fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.62)"},
@@ -470,9 +438,7 @@
 
   const EMOJIS = [
     "💡","✅","🎯","📌","🧠","⚡","🧩","🔥","📎","🔗","⭐","📝","📚","🧪","🐞","🧭",
-    "🚀","🧱","🗂️","📈","📊","🧷","🧵","🧲","🧰","🪄","💎","🗝️","🧿","🧸","🫧","🌿",
-    "📣","🎛️","🎚️","🎧","🎵","🎬","📷","🧾","🗒️","✍️","🧑‍💻","🧑‍🏫","🧑‍🎨","🧑‍🔧","🧑‍💼","🤝",
-    "❗","❓","🟢","🟡","🔴","🟣","🔵","⚪","⚫","🟧","🟦","🟩","🟥","🟨","🟪","🟫"
+    "🚀","🧱","🗂️","📈","📊","📣","🧰","🪄","💎","🗝️","🌿","❗","❓","🟢","🟡","🔴","🟣","🔵"
   ];
 
   const wrap = document.getElementById("wrap");
@@ -483,17 +449,19 @@
   const nodesLayer = document.getElementById("nodes");
   const toast = document.getElementById("toast");
 
+  const dotsBtn = document.getElementById("dotsBtn");
   const ctx = document.getElementById("ctx");
-  const menuTrigger = document.getElementById("menuTrigger");
   const emojiPop = document.getElementById("emojiPop");
   const emojiGrid = document.getElementById("emojiGrid");
-
-  let ctxOpen = false;
-  let emojiOpen = false;
 
   const projectSelect = document.getElementById("projectSelect");
   const importOne = document.getElementById("importOne");
   const importAll = document.getElementById("importAll");
+
+  const downloadBtn = document.getElementById("downloadBtn");
+  const downloadDrop = document.getElementById("downloadDrop");
+  const exportOneBtn = document.getElementById("exportOneBtn");
+  const exportAllBtn = document.getElementById("exportAllBtn");
 
   const uid = () => Math.random().toString(16).slice(2) + Date.now().toString(16);
   const nowTs = () => Date.now();
@@ -505,6 +473,7 @@
     showToast._t = setTimeout(()=> toast.classList.remove("show"), 1400);
   }
 
+  // измерение ширины текста -> ширина узла
   const measureCanvas = document.createElement("canvas");
   const mctx = measureCanvas.getContext("2d");
   const FONT = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
@@ -523,29 +492,15 @@
   let active = null;
   let map = null;
 
-  let tool = "select";
   let selectedId = null;
   let editingId = null;
 
+  let ctxOpen = false;
+  let emojiOpen = false;
+
+  // --- VIEW / ZOOM ---
   const DRAG_THRESHOLD = 6;
   let drag = null;
-
-  const pointers = new Map();
-  let pinch = null;
-
-  const tap = { id:null, count:0, t:0, timer:null };
-  const TAP_WINDOW = 420;
-
-  // Hover "sticky" for trigger
-  let hoverNodeId = null;
-  let hoverTrigger = false;
-
-  // Fixed owner while menu is open
-  let lockedOwnerId = null;
-
-  // Keep trigger visible briefly after leaving
-  let triggerHoldUntil = 0;
-  let holdTimer = null;
 
   function saveStore(){
     try{ localStorage.setItem(STORE_KEY, JSON.stringify(store)); }catch(e){}
@@ -574,7 +529,6 @@
       n.parentId = n.parentId || null;
       n.collapsed = !!n.collapsed;
 
-      // default center unless already set
       n.fmt ||= { bold:false, italic:false, align:"center" };
       if (!n.fmt.align) n.fmt.align = "center";
 
@@ -672,7 +626,6 @@
   }
 
   function addNodeAt(x,y, text="Новая идея", style=PALETTE[0]){
-    drag = null;
     const m = measureNode(text);
     const id = uid();
     map.nodes.push({
@@ -682,10 +635,11 @@
       childColorNext: 0,
       parentId: null,
       collapsed: false,
-      fmt:{bold:false, italic:false, align:"center"} // default center
+      fmt:{bold:false, italic:false, align:"center"}
     });
     selectedId = id;
-    closeAllPopups(false);
+    ctxOpen = false;
+    emojiOpen = false;
     autosave();
     renderAll();
     return id;
@@ -694,7 +648,6 @@
   function addChildFrom(parentId){
     const parent = getNode(parentId);
     if (!parent) return null;
-    drag = null;
 
     const idx = ((parent.childColorNext||0) + 1) % PALETTE.length;
     parent.childColorNext = (parent.childColorNext||0) + 1;
@@ -712,12 +665,13 @@
       childColorNext: 0,
       parentId: parentId,
       collapsed:false,
-      fmt:{bold:false, italic:false, align:"center"} // default center
+      fmt:{bold:false, italic:false, align:"center"}
     });
     addLink(parentId, id);
 
     selectedId = id;
-    closeAllPopups(false);
+    ctxOpen = false;
+    emojiOpen = false;
     autosave();
     renderAll();
     return id;
@@ -726,7 +680,6 @@
   function addSiblingFrom(nodeId){
     const n = getNode(nodeId);
     if (!n) return null;
-    drag = null;
 
     const parentId = n.parentId || null;
     const x = n.x;
@@ -741,19 +694,19 @@
       childColorNext: 0,
       parentId,
       collapsed:false,
-      fmt:{bold:false, italic:false, align:"center"} // default center
+      fmt:{bold:false, italic:false, align:"center"}
     });
     if (parentId) addLink(parentId, id);
 
     selectedId = id;
-    closeAllPopups(false);
+    ctxOpen = false;
+    emojiOpen = false;
     autosave();
     renderAll();
     return id;
   }
 
   function deleteSubtree(id){
-    drag = null;
     const ids = new Set();
     const stack = [id];
     while(stack.length){
@@ -777,9 +730,14 @@
     renderAll();
   }
 
+  // --- transform helpers ---
   function applyTransform(){
+    // округляем translate, и зум делаем "ступеньками" для уменьшения мыла
     const v = map.view;
-    world.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.k})`;
+    const tx = Math.round(v.x);
+    const ty = Math.round(v.y);
+    const k = v.k;
+    world.style.transform = `translate3d(${tx}px, ${ty}px, 0) scale(${k})`;
   }
 
   function clientToWorld(cx, cy){
@@ -847,12 +805,90 @@
     textEl.style.textAlign = fmt.align || "center";
   }
 
-  function scheduleTriggerHold(){
-    triggerHoldUntil = Date.now() + TRIGGER_HOLD_MS;
-    clearTimeout(holdTimer);
-    holdTimer = setTimeout(() => {
-      positionTriggerAndMenus();
-    }, TRIGGER_HOLD_MS + 30);
+  function closeAllPopups(hard){
+    ctxOpen = false;
+    emojiOpen = false;
+    ctx.style.display = "none";
+    emojiPop.style.display = "none";
+    dotsBtn.style.display = "none";
+    if (hard) selectedId = null;
+  }
+
+  function updateCtxToggles(){
+    const n = selectedId ? getNode(selectedId) : null;
+    if (!n) return;
+    n.fmt ||= {bold:false, italic:false, align:"center"};
+
+    document.getElementById("ctxBold").classList.toggle("on", !!n.fmt.bold);
+    document.getElementById("ctxItalic").classList.toggle("on", !!n.fmt.italic);
+
+    document.getElementById("ctxAlignL").classList.toggle("on", (n.fmt.align||"center")==="left");
+    document.getElementById("ctxAlignC").classList.toggle("on", (n.fmt.align||"center")==="center");
+    document.getElementById("ctxAlignR").classList.toggle("on", (n.fmt.align||"center")==="right");
+  }
+
+  function positionDotsAndMenus(){
+    // показываем ⋯ ТОЛЬКО когда узел выбран
+    if (!selectedId) {
+      dotsBtn.style.display = "none";
+      ctx.style.display = "none";
+      emojiPop.style.display = "none";
+      return;
+    }
+    const n = getNode(selectedId);
+    if (!n || isHiddenByCollapse(selectedId)) {
+      dotsBtn.style.display = "none";
+      ctx.style.display = "none";
+      emojiPop.style.display = "none";
+      return;
+    }
+
+    // ⋯ по центру снизу узла, почти вплотную
+    const dotW = 18, dotH = 18, gap = 2;
+    const tx = n.x + n.w/2 - dotW/2;
+    const ty = n.y + n.h + gap;
+
+    const stroke = (n.style && n.style.stroke) ? n.style.stroke : "rgba(11,19,36,.22)";
+    dotsBtn.style.borderColor = stroke;
+    dotsBtn.style.color = stroke;
+
+    dotsBtn.style.left = tx + "px";
+    dotsBtn.style.top  = ty + "px";
+    dotsBtn.style.display = "flex";
+
+    // меню — сразу под ⋯, очень близко
+    if (ctxOpen){
+      const ctxW = 520;
+      const ctxH = 52;
+      const gap2 = 6;
+
+      let cx = n.x + n.w/2 - ctxW/2;
+      cx = Math.max(10, cx); // в world-координатах просто ограничим слева
+      const cy = ty + dotH + gap2;
+
+      ctx.style.left = cx + "px";
+      ctx.style.top  = cy + "px";
+      ctx.style.display = "flex";
+    } else {
+      ctx.style.display = "none";
+      emojiOpen = false;
+      emojiPop.style.display = "none";
+    }
+
+    if (emojiOpen){
+      // emoji под меню
+      const anchorTop = parseFloat(ctx.style.top || (ty + dotH + 6));
+      const anchorLeft = parseFloat(ctx.style.left || (n.x));
+      const ey = anchorTop + 56;
+      const ex = anchorLeft;
+      emojiPop.style.left = ex + "px";
+      emojiPop.style.top  = ey + "px";
+      emojiPop.style.display = "block";
+    } else {
+      emojiPop.style.display = "none";
+    }
+
+    updateCtxToggles();
   }
 
   function renderNodes(){
@@ -878,30 +914,17 @@
 
       applyNodeFmt(div, n);
 
-      div.addEventListener("mouseenter", () => {
-        if (ctxOpen) return; // когда меню открыто — не меняем владельца от hover
-        hoverNodeId = n.id;
-        positionTriggerAndMenus();
-      });
-      div.addEventListener("mouseleave", () => {
-        if (ctxOpen) return;
-        hoverNodeId = null;
-        scheduleTriggerHold();
-        setTimeout(() => positionTriggerAndMenus(), 0);
-      });
-
+      // selection
       div.addEventListener("pointerdown", (e) => {
         if (editingId) return;
         e.preventDefault();
         selectedId = n.id;
         renderSelectionOnly();
-        // не авто-открываем меню
-        lockedOwnerId = null;
-        positionTriggerAndMenus();
-        updateCtxToggles();
+        // ⋯ появляется по клику на узел
+        positionDotsAndMenus();
       }, {passive:false});
 
-      // Drag move
+      // drag node
       div.addEventListener("pointerdown", (e) => {
         if (editingId) return;
         drag = {
@@ -921,7 +944,7 @@
         const dx = e.clientX - drag.sx;
         const dy = e.clientY - drag.sy;
         const dist = Math.hypot(dx, dy);
-        if (!drag.moved && dist > DRAG_THRESHOLD) drag.moved = true;
+        if (!drag.moved && dist > 6) drag.moved = true;
         if (!drag.moved) return;
 
         const node = getNode(drag.nodeId);
@@ -940,7 +963,7 @@
         }
 
         drawLinks();
-        positionTriggerAndMenus();
+        positionDotsAndMenus();
         autosave();
       });
 
@@ -949,13 +972,18 @@
           drag = null;
         }
       }
+      div.addEventListener("pointerup", endNodeDrag);
+      div.addEventListener("pointercancel", endNodeDrag);
+      div.addEventListener("lostpointercapture", endNodeDrag);
 
-      // Double/Triple click
+      // double/triple click logic
+      const TAP_WINDOW = 420;
+      if (!renderNodes._tap) renderNodes._tap = { id:null, count:0, t:0, timer:null };
+      const tap = renderNodes._tap;
+
       div.addEventListener("pointerup", (e) => {
         const moved = !!(drag && drag.kind === "node" && drag.pointerId === e.pointerId && drag.moved);
-        endNodeDrag(e);
-        if (editingId) return;
-        if (moved) return;
+        if (editingId || moved) return;
 
         const now = Date.now();
         const same = (tap.id === n.id) && (now - tap.t <= TAP_WINDOW);
@@ -969,9 +997,7 @@
 
           if (tap.count === 2){
             const childId = addChildFrom(n.id);
-            if (childId){
-              beginEdit(childId, true);
-            }
+            if (childId) beginEdit(childId, true);
           } else if (tap.count >= 3){
             beginEdit(n.id, true);
           }
@@ -980,12 +1006,9 @@
         }, TAP_WINDOW + 30);
       });
 
-      div.addEventListener("pointercancel", endNodeDrag);
-      div.addEventListener("lostpointercapture", endNodeDrag);
-
       nodesLayer.appendChild(div);
 
-      // Collapse dot
+      // collapse dot
       const kids = childrenOf(n.id);
       if (kids.length){
         const dot = document.createElement("div");
@@ -1016,164 +1039,10 @@
     applyTransform();
     drawLinks();
     renderNodes();
-    positionTriggerAndMenus();
-    updateCtxToggles();
+    positionDotsAndMenus();
   }
 
-  function closeAllPopups(hard){
-    ctxOpen = false;
-    emojiOpen = false;
-    lockedOwnerId = null;
-    if (hard){
-      hoverNodeId = null;
-      hoverTrigger = false;
-    }
-    ctx.style.display = "none";
-    emojiPop.style.display = "none";
-    menuTrigger.style.display = "none";
-  }
-
-  function triggerOwner(){
-    // Если меню открыто, закрепляем владельца
-    if (ctxOpen && lockedOwnerId) return lockedOwnerId;
-
-    // Если курсор на триггере — держим текущего владельца по selection/lock
-    if (hoverTrigger && (lockedOwnerId || selectedId)) return (lockedOwnerId || selectedId);
-
-    // Hover приоритетен, но только если ещё не истёк холд
-    if (hoverNodeId) return hoverNodeId;
-
-    // Если недавно ушёл курсор — держим прошлый owner (selection)
-    if (Date.now() <= triggerHoldUntil && selectedId) return selectedId;
-
-    return selectedId;
-  }
-
-  function positionTriggerAndMenus(){
-    const ownerId = triggerOwner();
-    if (!ownerId){
-      closeAllPopups(false);
-      return;
-    }
-
-    const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(ownerId)}"]`);
-    const n = getNode(ownerId);
-    if (!nodeEl || !n || isHiddenByCollapse(ownerId)) {
-      closeAllPopups(false);
-      return;
-    }
-
-    const rect = nodeEl.getBoundingClientRect();
-    const headerRect = topbar.getBoundingClientRect();
-    const safeTop = headerRect.bottom + 6;
-
-    const trigW = 18, trigH = 18, gap = 2;
-    let tx = rect.left + rect.width/2 - trigW/2;
-    let ty = rect.bottom + gap;
-
-    if (ty + trigH > window.innerHeight - 8){
-      ty = rect.top - trigH - gap;
-    }
-    ty = Math.max(safeTop, ty);
-    tx = Math.max(10, Math.min(window.innerWidth - trigW - 10, tx));
-
-    const stroke = (n.style && n.style.stroke) ? n.style.stroke : "rgba(11,19,36,.22)";
-    menuTrigger.style.borderColor = stroke;
-    menuTrigger.style.color = stroke;
-
-    menuTrigger.style.left = tx + "px";
-    menuTrigger.style.top  = ty + "px";
-    menuTrigger.style.display = "flex";
-
-    if (ctxOpen){
-      const ctxW = 520, ctxH = 52, gap2 = 6;
-      let cx = rect.left + rect.width/2 - ctxW/2;
-      cx = Math.max(12, Math.min(window.innerWidth - ctxW - 12, cx));
-
-      let cy = ty + trigH + gap2;
-      if (cy + ctxH > window.innerHeight - 8){
-        cy = ty - ctxH - gap2;
-      }
-      cy = Math.max(safeTop, cy);
-
-      ctx.style.left = cx + "px";
-      ctx.style.top  = cy + "px";
-      ctx.style.display = "flex";
-    } else {
-      ctx.style.display = "none";
-    }
-
-    if (emojiOpen){
-      const anchor = ctxOpen ? ctx.getBoundingClientRect() : menuTrigger.getBoundingClientRect();
-      const popW = 308, popH = 220, gap3 = 8;
-
-      let ex = anchor.left;
-      ex = Math.max(12, Math.min(window.innerWidth - popW - 12, ex));
-
-      let ey = anchor.bottom + gap3;
-      if (ey + popH > window.innerHeight - 8){
-        ey = anchor.top - popH - gap3;
-      }
-      ey = Math.max(safeTop, ey);
-
-      emojiPop.style.left = ex + "px";
-      emojiPop.style.top  = ey + "px";
-      emojiPop.style.display = "block";
-    } else {
-      emojiPop.style.display = "none";
-    }
-  }
-
-  menuTrigger.addEventListener("mouseenter", () => { hoverTrigger = true; });
-  menuTrigger.addEventListener("mouseleave", () => {
-    hoverTrigger = false;
-    scheduleTriggerHold();
-    setTimeout(() => positionTriggerAndMenus(), 0);
-  });
-
-  menuTrigger.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const ownerId = triggerOwner();
-    if (!ownerId) return;
-
-    selectedId = ownerId;
-    lockedOwnerId = ownerId;
-
-    renderSelectionOnly();
-
-    ctxOpen = !ctxOpen;
-    if (!ctxOpen){
-      emojiOpen = false;
-      lockedOwnerId = null;
-    }
-    positionTriggerAndMenus();
-    updateCtxToggles();
-  });
-
-  document.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".ctx") || e.target.closest(".menuTrigger") || e.target.closest(".emojiPop")) return;
-    if (ctxOpen || emojiOpen){
-      ctxOpen = false;
-      emojiOpen = false;
-      lockedOwnerId = null;
-      positionTriggerAndMenus();
-    }
-  });
-
-  function updateCtxToggles(){
-    const n = selectedId ? getNode(selectedId) : null;
-    if (!n) return;
-    n.fmt ||= {bold:false, italic:false, align:"center"};
-
-    document.getElementById("ctxBold").classList.toggle("on", !!n.fmt.bold);
-    document.getElementById("ctxItalic").classList.toggle("on", !!n.fmt.italic);
-
-    document.getElementById("ctxAlignL").classList.toggle("on", (n.fmt.align||"center")==="left");
-    document.getElementById("ctxAlignC").classList.toggle("on", (n.fmt.align||"center")==="center");
-    document.getElementById("ctxAlignR").classList.toggle("on", (n.fmt.align||"center")==="right");
-  }
-
+  // ---- Editing ----
   function selectAllIn(el){
     const range = document.createRange();
     range.selectNodeContents(el);
@@ -1188,9 +1057,7 @@
     const n = getNode(id);
     if (!nodeEl || !n) return;
 
-    drag = null;
     editingId = id;
-
     scene.classList.add("allowSelect");
     nodeEl.classList.add("editing");
 
@@ -1233,7 +1100,6 @@
       if (e.key === "Escape"){ e.preventDefault(); finish(false); }
       e.stopPropagation();
     };
-
     const onBlur = () => finish(true);
 
     textEl.addEventListener("keydown", onKey);
@@ -1251,6 +1117,7 @@
     renderAll();
   }
 
+  // ---- Context menu actions ----
   document.getElementById("ctxChild").onclick = () => {
     if (!selectedId) return;
     const id = addChildFrom(selectedId);
@@ -1305,7 +1172,7 @@
   document.getElementById("ctxEmoji").onclick = () => {
     if (!selectedId) return;
     emojiOpen = !emojiOpen;
-    positionTriggerAndMenus();
+    positionDotsAndMenus();
   };
 
   document.getElementById("ctxCollapse").onclick = () => { if (selectedId) toggleCollapse(selectedId); };
@@ -1313,8 +1180,7 @@
   document.getElementById("ctxClose").onclick = () => {
     ctxOpen = false;
     emojiOpen = false;
-    lockedOwnerId = null;
-    positionTriggerAndMenus();
+    positionDotsAndMenus();
   };
 
   function buildEmojiGrid(){
@@ -1327,37 +1193,43 @@
         if (!selectedId) return;
         insertEmojiToNode(selectedId, em);
         emojiOpen = false;
-        positionTriggerAndMenus();
+        positionDotsAndMenus();
       };
       emojiGrid.appendChild(cell);
     }
   }
   buildEmojiGrid();
 
-  scene.addEventListener("pointerdown", (e) => {
-    pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
+  // dots click -> open ctx
+  dotsBtn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    ctxOpen = !ctxOpen;
+    if (!ctxOpen) emojiOpen = false;
+    positionDotsAndMenus();
+  });
 
-    const onUi = !!e.target.closest(".node") || !!e.target.closest(".collapseDot") || !!e.target.closest(".ctx") || !!e.target.closest(".menuTrigger") || !!e.target.closest(".emojiPop");
+  // click outside -> close ctx/emoji (не снимаем selection, просто закрываем меню)
+  document.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("#ctx") || e.target.closest("#dotsBtn") || e.target.closest("#emojiPop")) return;
+    if (ctxOpen || emojiOpen){
+      ctxOpen = false;
+      emojiOpen = false;
+      positionDotsAndMenus();
+    }
+  });
+
+  // ---- Scene pan/zoom & create ----
+  scene.addEventListener("pointerdown", (e) => {
+    const onUi = !!e.target.closest(".node") || !!e.target.closest(".collapseDot") || !!e.target.closest("#ctx") || !!e.target.closest("#dotsBtn") || !!e.target.closest("#emojiPop");
     if (!onUi){
       if (editingId){
         const editor = nodesLayer.querySelector(`.node[data-id="${CSS.escape(editingId)}"] .text`);
         if (editor) editor.blur();
       }
-
-      if (tool === "node"){
-        const p = clientToWorld(e.clientX, e.clientY);
-        const id = addNodeAt(p.x - 90, p.y - 30, "Новая идея", PALETTE[0]);
-        beginEdit(id, true);
-        return;
-      }
-
-      selectedId = null;
-      hoverNodeId = null;
-      ctxOpen = false;
-      emojiOpen = false;
-      lockedOwnerId = null;
-      renderSelectionOnly();
-      closeAllPopups(false);
+      // клик в пустоту — просто закрываем меню
+      ctxOpen = false; emojiOpen = false;
+      positionDotsAndMenus();
 
       drag = {
         kind:"pan",
@@ -1369,41 +1241,9 @@
       };
       scene.setPointerCapture(e.pointerId);
     }
-
-    if (pointers.size === 2){
-      const pts = [...pointers.values()];
-      pinch = {
-        dist0: Math.hypot(pts[1].x-pts[0].x, pts[1].y-pts[0].y),
-        k0: map.view.k
-      };
-    }
   });
 
   scene.addEventListener("pointermove", (e) => {
-    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
-
-    if (pointers.size === 2 && pinch){
-      const pts = [...pointers.values()];
-      const dist = Math.hypot(pts[1].x-pts[0].x, pts[1].y-pts[0].y);
-      const scale = dist / Math.max(1, pinch.dist0);
-      const nk = Math.max(0.25, Math.min(3.2, pinch.k0 * scale));
-
-      const mid = {x:(pts[0].x+pts[1].x)/2, y:(pts[0].y+pts[1].y)/2};
-      const before = clientToWorld(mid.x, mid.y);
-
-      map.view.k = nk;
-      const r = scene.getBoundingClientRect();
-      const vx = mid.x - r.left;
-      const vy = mid.y - r.top;
-      map.view.x = vx - before.x * nk;
-      map.view.y = vy - before.y * nk;
-
-      applyTransform();
-      positionTriggerAndMenus();
-      autosave();
-      return;
-    }
-
     if (!drag || drag.pointerId !== e.pointerId) return;
     if (drag.kind !== "pan") return;
 
@@ -1416,27 +1256,27 @@
     map.view.x = drag.startViewX + dx;
     map.view.y = drag.startViewY + dy;
     applyTransform();
-    positionTriggerAndMenus();
     autosave();
   });
 
   scene.addEventListener("pointerup", (e) => {
-    pointers.delete(e.pointerId);
-    if (pointers.size < 2) pinch = null;
     if (drag && drag.kind === "pan" && drag.pointerId === e.pointerId) drag = null;
   });
   scene.addEventListener("pointercancel", (e) => {
-    pointers.delete(e.pointerId);
     if (drag && drag.pointerId === e.pointerId) drag = null;
   });
 
+  // Wheel zoom: делаем ступеньки для уменьшения мыла
   wrap.addEventListener("wheel", (e) => {
     e.preventDefault();
+
     const delta = Math.sign(e.deltaY);
-    const factor = delta > 0 ? 0.92 : 1.08;
+    const step = 0.05;
+    let nk = map.view.k + (delta > 0 ? -step : step);
+    nk = Math.max(0.25, Math.min(3.2, nk));
+    nk = Math.round(nk / step) * step;
 
     const before = clientToWorld(e.clientX, e.clientY);
-    const nk = Math.max(0.25, Math.min(3.2, map.view.k * factor));
 
     const r = scene.getBoundingClientRect();
     const vx = e.clientX - r.left;
@@ -1447,131 +1287,58 @@
     map.view.y = vy - before.y * nk;
 
     applyTransform();
-    positionTriggerAndMenus();
+    positionDotsAndMenus();
     autosave();
   }, {passive:false});
 
+  // dblclick empty -> create node
   scene.addEventListener("dblclick", (e) => {
-    if (e.target.closest(".node") || e.target.closest(".collapseDot") || e.target.closest(".ctx") || e.target.closest(".menuTrigger") || e.target.closest(".emojiPop")) return;
+    if (e.target.closest(".node") || e.target.closest(".collapseDot") || e.target.closest("#ctx") || e.target.closest("#dotsBtn") || e.target.closest("#emojiPop")) return;
     const p = clientToWorld(e.clientX, e.clientY);
     const id = addNodeAt(p.x - 90, p.y - 30, "Новая идея", PALETTE[0]);
     beginEdit(id, true);
   });
 
-  function setTool(t){
-    tool = t;
-    document.querySelectorAll(".toolbtn").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
-    if (t === "center") centerOnSelection();
-  }
-  document.getElementById("leftbar").addEventListener("click", (e) => {
-    const btn = e.target.closest(".toolbtn");
-    if (!btn) return;
-    setTool(btn.dataset.tool);
+  // keyboard helpers
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape"){
+      if (emojiOpen){ emojiOpen = false; positionDotsAndMenus(); return; }
+      if (ctxOpen){ ctxOpen = false; positionDotsAndMenus(); return; }
+    }
+    if (e.key === "Tab" && selectedId && !editingId){
+      e.preventDefault();
+      const id = addChildFrom(selectedId);
+      if (id) beginEdit(id, true);
+    }
+    if (e.key === "Enter" && selectedId && !editingId){
+      e.preventDefault();
+      const id = addSiblingFrom(selectedId);
+      if (id) beginEdit(id, true);
+    }
+    if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingId){
+      e.preventDefault();
+      deleteSubtree(selectedId);
+    }
   });
 
-  function centerOnSelection(){
-    if (!selectedId){ showToast("Выбери узел"); setTool("select"); return; }
-    const n = getNode(selectedId); if (!n) return;
-    const r = scene.getBoundingClientRect();
-    const cx = r.width/2, cy = r.height/2;
-    map.view.x = cx - (n.x + n.w/2) * map.view.k;
-    map.view.y = cy - (n.y + n.h/2) * map.view.k;
-    applyTransform();
-    positionTriggerAndMenus();
-    autosave();
-    setTool("select");
+  // ---- Download dropdown ----
+  function closeDownload(){
+    downloadDrop.style.display = "none";
   }
+  downloadBtn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    downloadDrop.style.display = (downloadDrop.style.display === "block") ? "none" : "block";
+  });
+  document.addEventListener("pointerdown", (e) => {
+    if (e.target.closest(".menuWrap")) return;
+    closeDownload();
+  });
 
-  projectSelect.addEventListener("change", () => setActiveProject(projectSelect.value));
-
-  document.getElementById("projNew").onclick = () => {
-    const name = prompt("Название нового майндмэпа:", "Новый майндмэп");
-    const p = createEmptyProject((name || "Новый майндмэп").trim());
-    rebuildProjectSelect();
-    setActiveProject(p.id);
-    showToast("Создано");
-  };
-
-  document.getElementById("projRename").onclick = () => {
-    if (!active) return;
-    const name = prompt("Новое название:", active.name || "Майндмэп");
-    if (!name) return;
-    active.name = name.trim();
-    active.updatedAt = nowTs();
-    saveStore();
-    rebuildProjectSelect();
-    showToast("Переименовано");
-  };
-
-  document.getElementById("projDup").onclick = () => {
+  exportOneBtn.onclick = () => {
     if (!active) return;
     commitMap();
-    const name = prompt("Название копии:", (active.name || "Майндмэп") + " (копия)");
-    const id = uid();
-    const clone = {
-      id,
-      name: (name || "Копия").trim(),
-      createdAt: nowTs(),
-      updatedAt: nowTs(),
-      data: JSON.parse(JSON.stringify(store.projects[store.activeId].data))
-    };
-    store.projects[id] = clone;
-    store.activeId = id;
-    saveStore();
-    rebuildProjectSelect();
-    setActiveProject(id);
-    showToast("Дубликат создан");
-  };
-
-  document.getElementById("projDel").onclick = () => {
-    if (!active) return;
-    if (!confirm(`Удалить "${active.name}"?`)) return;
-    delete store.projects[active.id];
-    const ids = Object.keys(store.projects);
-    if (!ids.length){
-      createEmptyProject("Мой первый майндмэп");
-    } else {
-      store.activeId = ids[0];
-    }
-    saveStore();
-    rebuildProjectSelect();
-    setActiveProject(store.activeId);
-    showToast("Удалено");
-  };
-
-  document.getElementById("autoLayout").onclick = () => {
-    if (!map.nodes.length){ showToast("Нет узлов"); return; }
-    const root = map.nodes.find(n => !n.parentId) || map.nodes[0];
-    const r = scene.getBoundingClientRect();
-    const center = clientToWorld(r.left + r.width/2, r.top + r.height/2);
-
-    root.x = center.x - root.w/2;
-    root.y = center.y - root.h/2;
-
-    const kids = childrenOf(root.id).map(getNode).filter(Boolean);
-    let y = root.y - (kids.length * 76)/2;
-    for (const k of kids){
-      k.x = root.x + root.w + 160;
-      k.y = y;
-      y += 76;
-    }
-    autosave();
-    renderAll();
-    showToast("Готово");
-  };
-
-  document.getElementById("resetView").onclick = () => {
-    map.view = {x:24,y:24,k:1};
-    applyTransform();
-    positionTriggerAndMenus();
-    autosave();
-    showToast("Сброшено");
-  };
-
-  document.getElementById("exportOne").onclick = () => {
-    if (!active) return;
-    commitMap();
-    const payload = { kind:"mindmap_project", version:6, project: store.projects[store.activeId] };
+    const payload = { kind:"mindmap_project", version:7, project: store.projects[store.activeId] };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1579,7 +1346,21 @@
     a.download = safe + ".json";
     a.click();
     URL.revokeObjectURL(a.href);
+    closeDownload();
     showToast("Экспортировано");
+  };
+
+  exportAllBtn.onclick = () => {
+    commitMap();
+    const payload = { kind:"mindmap_store", version:7, store };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "mindmaps_all.json";
+    a.click();
+    URL.revokeObjectURL(a.href);
+    closeDownload();
+    showToast("Экспорт всех готов");
   };
 
   importOne.addEventListener("change", (e) => {
@@ -1607,19 +1388,8 @@
     };
     fr.readAsText(f);
     e.target.value = "";
+    closeDownload();
   });
-
-  document.getElementById("exportAll").onclick = () => {
-    commitMap();
-    const payload = { kind:"mindmap_store", version:6, store };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "mindmaps_all.json";
-    a.click();
-    URL.revokeObjectURL(a.href);
-    showToast("Экспорт всех готов");
-  };
 
   importAll.addEventListener("change", (e) => {
     const f = e.target.files && e.target.files[0];
@@ -1652,35 +1422,21 @@
     };
     fr.readAsText(f);
     e.target.value = "";
+    closeDownload();
   });
 
-  window.addEventListener("keydown", (e) => {
-    const k = e.key.toLowerCase();
-    if (k === "v") setTool("select");
-    if (k === "h") setTool("hand");
-    if (k === "n") setTool("node");
-    if (k === "c") setTool("center");
+  // ---- Topbar project controls ----
+  projectSelect.addEventListener("change", () => setActiveProject(projectSelect.value));
 
-    if (e.key === "Tab" && selectedId && !editingId){
-      e.preventDefault();
-      const id = addChildFrom(selectedId);
-      if (id) beginEdit(id, true);
-    }
-    if (e.key === "Enter" && selectedId && !editingId){
-      e.preventDefault();
-      const id = addSiblingFrom(selectedId);
-      if (id) beginEdit(id, true);
-    }
-    if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingId){
-      e.preventDefault(); deleteSubtree(selectedId);
-    }
+  document.getElementById("projNew").onclick = () => {
+    const name = prompt("Название нового майндмэпа:", "Новый майндмэп");
+    const p = createEmptyProject((name || "Новый майндмэп").trim());
+    rebuildProjectSelect();
+    setActiveProject(p.id);
+    showToast("Создано");
+  };
 
-    if (e.key === "Escape"){
-      if (emojiOpen){ emojiOpen = false; positionTriggerAndMenus(); return; }
-      if (ctxOpen){ ctxOpen = false; lockedOwnerId = null; positionTriggerAndMenus(); return; }
-    }
-  });
-
+  // ---- INIT ----
   function init(){
     store = loadStore();
     if (!store){
