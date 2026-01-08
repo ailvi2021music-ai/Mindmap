@@ -6,7 +6,6 @@
   <title>MindMap</title>
   <meta name="theme-color" content="#f3f7ff"/>
 
-  <!-- Inter (похоже на Whimsical). Если не загрузится — будет system-ui -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
@@ -14,17 +13,10 @@
   <style>
     :root{
       --text:#0b1324;
-      --muted:rgba(11,19,36,.65);
       --stroke:rgba(11,19,36,.12);
       --shadow: 0 18px 60px rgba(10,20,40,.14);
       --grid:rgba(10,20,40,.06);
       --glass: rgba(255,255,255,.72);
-
-      --tool: rgba(20,28,40,.92);
-      --toolStroke: rgba(255,255,255,.10);
-      --toolText: rgba(255,255,255,.92);
-
-      --blue: rgba(89,195,255,.95);
     }
 
     *{ box-sizing:border-box; }
@@ -72,21 +64,10 @@
     .btn:active{ transform: translateY(1px); }
     .btn.primary{ border-color: rgba(89,195,255,.55); }
 
-    /* Кастомный выбор майндмэпа вместо <select> */
-    .dd{
-      position:relative;
-      min-width: 240px;
-    }
-    .ddBtn{
-      width:100%;
-      justify-content:space-between;
-      font-weight:600;
-    }
+    .dd{ position:relative; min-width:240px; }
+    .ddBtn{ width:100%; justify-content:space-between; font-weight:600; }
     .ddList{
-      position:absolute;
-      top: 44px;
-      left:0;
-      right:0;
+      position:absolute; top: 44px; left:0; right:0;
       background: rgba(255,255,255,.92);
       border: 1px solid rgba(11,19,36,.12);
       border-radius: 14px;
@@ -114,25 +95,18 @@
       font-weight:600;
     }
     .ddItem:hover{ border-color: rgba(89,195,255,.45); }
-    .ddMeta{
-      font-weight:600;
-      font-size:12px;
-      color: rgba(11,19,36,.55);
-    }
+    .ddMeta{ font-weight:600; font-size:12px; color: rgba(11,19,36,.55); }
 
-    /* Скачать */
     .menuWrap{ position:relative; }
     .drop{
-      position:absolute;
-      top: 44px;
-      right: 0;
+      position:absolute; top: 44px; right: 0;
       background: rgba(255,255,255,.92);
       border: 1px solid rgba(11,19,36,.12);
       border-radius: 14px;
       box-shadow: var(--shadow);
       padding: 8px;
       display:none;
-      min-width: 260px;
+      min-width: 240px;
       backdrop-filter: blur(10px);
       z-index: 200;
     }
@@ -154,7 +128,17 @@
     .drop .item:hover{ border-color: rgba(89,195,255,.45); }
     input[type="file"]{ display:none; }
 
-    .stageWrap{ flex:1; position:relative; overflow:hidden; }
+    .stageWrap{
+      flex:1;
+      position:relative;
+      overflow:hidden;
+
+      /* ВАЖНО: не даём Яндексу думать, что тут можно выделять текст */
+      user-select:none;
+      -webkit-user-select:none;
+      -ms-user-select:none;
+      -moz-user-select:none;
+    }
     .stageWrap::before{
       content:"";
       position:absolute; inset:0;
@@ -171,25 +155,27 @@
       position:absolute; inset:0;
       z-index:1;
       touch-action:none;
+      user-select:none;
+      -webkit-user-select:none;
     }
 
     .toast{
       position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
-      background: rgba(255,255,255,.72);
+      background: rgba(255,255,255,.78);
       border:1px solid rgba(11,19,36,.14);
       padding:10px 12px; border-radius:12px;
-      color:rgba(11,19,36,.86);
+      color:rgba(11,19,36,.92);
       backdrop-filter: blur(10px);
       box-shadow: var(--shadow);
       opacity:0; pointer-events:none;
       transition: opacity .18s ease;
-      max-width:min(720px, calc(100% - 24px));
+      max-width:min(900px, calc(100% - 24px));
       z-index:110;
-      font-weight:600;
+      font-weight:700;
+      white-space:pre-wrap;
     }
     .toast.show{ opacity:1; }
 
-    /* Оверлей для редактирования */
     #editor{
       position:absolute;
       z-index: 300;
@@ -239,11 +225,7 @@
       <g id="world">
         <g id="links"></g>
         <g id="nodes"></g>
-
-        <!-- кнопка ⋯ -->
         <g id="dots" style="display:none; cursor:pointer;"></g>
-
-        <!-- меню -->
         <g id="ctx" style="display:none;"></g>
       </g>
     </svg>
@@ -255,7 +237,7 @@
 
 <script>
 (() => {
-  const STORE_KEY = "mindmap_projects_v8_svg";
+  const STORE_KEY = "mindmap_projects_v9_svg_safe";
 
   const PALETTE = [
     {fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.62)"},
@@ -276,7 +258,6 @@
   const toast = document.getElementById("toast");
   const editor = document.getElementById("editor");
 
-  const projDD = document.getElementById("projDD");
   const projBtn = document.getElementById("projBtn");
   const projBtnText = document.getElementById("projBtnText");
   const projList = document.getElementById("projList");
@@ -296,14 +277,34 @@
     toast.textContent = msg;
     toast.classList.add("show");
     clearTimeout(showToast._t);
-    showToast._t = setTimeout(()=> toast.classList.remove("show"), 1400);
+    showToast._t = setTimeout(()=> toast.classList.remove("show"), 2200);
   }
 
-  // --------- Storage ---------
-  let store = loadStore() || { activeId:null, projects:{} };
-  let active = null;
-  let map = null;
+  // показываем ошибку вместо "белого экрана"
+  window.addEventListener("error", (e) => {
+    showToast("Ошибка: " + (e.message || e.error || "unknown"));
+  });
+  window.addEventListener("unhandledrejection", (e) => {
+    showToast("Ошибка: " + (e.reason?.message || e.reason || "promise rejection"));
+  });
 
+  // ---------- SVG-safe helpers (важно для Яндекса) ----------
+  function safeMatches(el, selector){
+    if (!el) return false;
+    const fn = el.matches || el.msMatchesSelector || el.webkitMatchesSelector;
+    if (fn) return fn.call(el, selector);
+    return false;
+  }
+  function safeClosest(el, selector){
+    let cur = el;
+    while(cur){
+      if (cur.nodeType === 1 && safeMatches(cur, selector)) return cur;
+      cur = cur.parentNode;
+    }
+    return null;
+  }
+
+  // ---------- Storage ----------
   function saveStore(){
     try{ localStorage.setItem(STORE_KEY, JSON.stringify(store)); }catch(e){}
   }
@@ -321,7 +322,7 @@
     const id = uid();
     const centerId = uid();
     const data = {
-      view:{x: 120, y: 90, k: 1},
+      view:{x: 140, y: 110, k: 1},
       nodes: [{
         id:centerId,
         x: 240, y: 180,
@@ -341,6 +342,11 @@
     return p;
   }
 
+  // стартуем максимально устойчиво
+  let store = loadStore();
+  if (!store || !store.projects || typeof store.projects !== "object"){
+    store = { activeId:null, projects:{} };
+  }
   if (!Object.keys(store.projects).length){
     createEmptyProject("Мой первый майндмэп");
   }
@@ -349,38 +355,53 @@
     saveStore();
   }
 
-  // --------- Map state ---------
+  let active = null;
+  let map = null;
   let selectedId = null;
   let editingId = null;
   let ctxOpen = false;
 
-  // view: translate + scale (в SVG это вектор — будет чётко)
+  function commitMap(){
+    if (!active || !map) return;
+    active.updatedAt = nowTs();
+    active.data = JSON.parse(JSON.stringify(map));
+    saveStore();
+  }
+  function autosave(){
+    clearTimeout(autosave._t);
+    autosave._t = setTimeout(commitMap, 250);
+  }
+
+  function escapeHtml(s){
+    return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+  }
+  function safeName(s){ return (s||"mindmap").replace(/[^\w\d\-_.]+/g,"_"); }
+  function downloadJson(obj, filename){
+    const blob = new Blob([JSON.stringify(obj, null, 2)], {type:"application/json"});
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // ---------- geometry ----------
   function applyTransform(){
     const v = map.view;
     world.setAttribute("transform", `translate(${v.x} ${v.y}) scale(${v.k})`);
   }
-
   function clientToWorld(cx, cy){
     const r = svg.getBoundingClientRect();
     const v = map.view;
-    return {
-      x: (cx - r.left - v.x) / v.k,
-      y: (cy - r.top  - v.y) / v.k
-    };
+    return { x: (cx - r.left - v.x) / v.k, y: (cy - r.top - v.y) / v.k };
   }
-
   function worldToClient(wx, wy){
     const r = svg.getBoundingClientRect();
     const v = map.view;
-    return {
-      x: r.left + v.x + wx * v.k,
-      y: r.top  + v.y + wy * v.k
-    };
+    return { x: r.left + v.x + wx * v.k, y: r.top + v.y + wy * v.k };
   }
-
   function getNode(id){ return map.nodes.find(n => n.id === id); }
   function childrenOf(id){ return map.nodes.filter(n => n.parentId === id).map(n => n.id); }
-
   function isHiddenByCollapse(nodeId){
     let cur = getNode(nodeId);
     while(cur && cur.parentId){
@@ -391,20 +412,9 @@
     return false;
   }
 
-  function commitMap(){
-    if (!active) return;
-    active.updatedAt = nowTs();
-    active.data = JSON.parse(JSON.stringify(map));
-    saveStore();
-  }
-  function autosave(){
-    clearTimeout(autosave._t);
-    autosave._t = setTimeout(() => commitMap(), 250);
-  }
+  function clear(g){ while(g.firstChild) g.removeChild(g.firstChild); }
 
-  // --------- sizing (в SVG) ---------
   function measureTextWidth(text, weight=600, size=16){
-    // простой измеритель: SVG <text> offscreen
     const t = document.createElementNS("http://www.w3.org/2000/svg","text");
     t.setAttribute("x", -9999);
     t.setAttribute("y", -9999);
@@ -417,21 +427,18 @@
     svg.removeChild(t);
     return w;
   }
-
   function nodeBox(n){
     const padX = 22;
     const minW = 170;
     const maxW = 520;
     const fontSize = 20;
     const weight = (n.fmt && n.fmt.bold) ? 700 : 600;
-
     const txt = (n.text || "").trim() || "Идея";
     const w = Math.max(minW, Math.min(maxW, Math.ceil(measureTextWidth(txt, weight, fontSize) + padX*2)));
-    const h = 64; // фикс высота как у карточки
+    const h = 64;
     return {w,h, fontSize, weight};
   }
 
-  // --------- create/delete ---------
   function addLink(a,b){
     if (!a || !b || a===b) return;
     const exists = map.links.some(l => (l.a===a && l.b===b) || (l.a===b && l.b===a));
@@ -478,7 +485,7 @@
     map.nodes = map.nodes.filter(n => !ids.has(n.id));
     map.links = map.links.filter(l => !ids.has(l.a) && !ids.has(l.b));
     if (selectedId && ids.has(selectedId)) selectedId = null;
-    closeCtx();
+    ctxOpen = false;
     autosave();
     renderAll();
   }
@@ -490,9 +497,6 @@
     autosave();
     renderAll();
   }
-
-  // --------- rendering ---------
-  function clear(g){ while(g.firstChild) g.removeChild(g.firstChild); }
 
   function edgePoint(from, to){
     const b1 = nodeBox(from);
@@ -548,8 +552,6 @@
       g.style.cursor = editingId ? "default" : "grab";
 
       const rect = document.createElementNS("http://www.w3.org/2000/svg","rect");
-      rect.setAttribute("x", 0);
-      rect.setAttribute("y", 0);
       rect.setAttribute("width", w);
       rect.setAttribute("height", h);
       rect.setAttribute("rx", 18);
@@ -560,17 +562,15 @@
       g.appendChild(rect);
 
       const text = document.createElementNS("http://www.w3.org/2000/svg","text");
-      text.setAttribute("x", w/2);
       text.setAttribute("y", h/2 + 7);
-      text.setAttribute("text-anchor","middle");
       text.setAttribute("dominant-baseline","middle");
       text.style.fontFamily = "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
       text.style.fontSize = fontSize + "px";
       text.style.fontWeight = String(weight);
       text.style.fontStyle = (n.fmt && n.fmt.italic) ? "italic" : "normal";
       text.style.fill = "rgba(11,19,36,.90)";
+      text.textContent = (n.text || "").trim() || "Идея";
 
-      // align: left/center/right
       const align = (n.fmt && n.fmt.align) ? n.fmt.align : "center";
       if (align === "left"){
         text.setAttribute("text-anchor","start");
@@ -583,10 +583,8 @@
         text.setAttribute("x", w/2);
       }
 
-      text.textContent = (n.text || "").trim() || "Идея";
       g.appendChild(text);
 
-      // click select
       g.addEventListener("pointerdown", (e) => {
         if (editingId) return;
         e.stopPropagation();
@@ -595,19 +593,16 @@
         renderAll();
       });
 
-      // drag
       g.addEventListener("pointerdown", (e) => {
         if (editingId) return;
         e.stopPropagation();
         startNodeDrag(e, n.id);
       });
 
-      // dbl/triple click
       hookTapLogic(g, n.id);
 
       nodesG.appendChild(g);
 
-      // collapse dot (если есть дети)
       const kids = childrenOf(n.id);
       if (kids.length){
         const dot = document.createElementNS("http://www.w3.org/2000/svg","g");
@@ -646,26 +641,14 @@
     clear(dotsG);
     clear(ctxG);
 
-    if (!selectedId) {
-      dotsG.style.display = "none";
-      ctxG.style.display = "none";
-      return;
-    }
-
+    if (!selectedId) { dotsG.style.display="none"; ctxG.style.display="none"; return; }
     const n = getNode(selectedId);
-    if (!n || isHiddenByCollapse(selectedId)) {
-      dotsG.style.display = "none";
-      ctxG.style.display = "none";
-      return;
-    }
+    if (!n || isHiddenByCollapse(selectedId)) { dotsG.style.display="none"; ctxG.style.display="none"; return; }
 
     const {w,h} = nodeBox(n);
-
-    // dots just under node
     const dotX = n.x + w/2;
     const dotY = n.y + h + 14;
 
-    // circle
     const bg = document.createElementNS("http://www.w3.org/2000/svg","circle");
     bg.setAttribute("cx", dotX);
     bg.setAttribute("cy", dotY);
@@ -675,35 +658,26 @@
     bg.setAttribute("stroke-width", "2");
     dotsG.appendChild(bg);
 
-    // three dots (perfect centered)
     const dColor = n.style?.stroke || "rgba(11,19,36,.75)";
-    const offsets = [-4,0,4];
-    for (const dx of offsets){
+    [-4,0,4].forEach(dx => {
       const dc = document.createElementNS("http://www.w3.org/2000/svg","circle");
       dc.setAttribute("cx", dotX + dx);
       dc.setAttribute("cy", dotY);
       dc.setAttribute("r", 1.6);
       dc.setAttribute("fill", dColor);
       dotsG.appendChild(dc);
-    }
+    });
 
     dotsG.style.display = "block";
-    dotsG.style.pointerEvents = "auto";
-
-    // click dots -> toggle menu
     dotsG.onpointerdown = (e) => {
       e.stopPropagation();
       ctxOpen = !ctxOpen;
       renderAll();
     };
 
-    if (!ctxOpen){
-      ctxG.style.display = "none";
-      return;
-    }
+    if (!ctxOpen){ ctxG.style.display="none"; return; }
 
-    // ctx box under dots
-    const boxW = 520;
+    const boxW = 420;
     const boxH = 54;
     const boxX = Math.max(10, dotX - boxW/2);
     const boxY = dotY + 16;
@@ -721,17 +695,11 @@
     ctxG.appendChild(rect);
 
     const items = [
-      {id:"child",  label:"↳", title:"Дочерний", action:()=>addChildFrom(selectedId)},
-      {id:"rename", label:"✏️", title:"Редактировать", action:()=>beginEdit(selectedId,true)},
-      {id:"bold",   label:"B", title:"Жирный", action:()=>toggleFmt("bold")},
-      {id:"italic", label:"I", title:"Курсив", action:()=>toggleFmt("italic")},
-      {id:"al",     label:"⇤", title:"Влево", action:()=>setAlign("left")},
-      {id:"ac",     label:"≡", title:"Центр", action:()=>setAlign("center")},
-      {id:"ar",     label:"⇥", title:"Вправо", action:()=>setAlign("right")},
-      {id:"color",  label:"🎨", title:"Цвет", action:()=>cycleColor()},
-      {id:"col",    label:"⤵️", title:"Свернуть/развернуть", action:()=>toggleCollapse(selectedId)},
-      {id:"del",    label:"🗑️", title:"Удалить", action:()=>deleteSubtree(selectedId)},
-      {id:"close",  label:"✖", title:"Закрыть", action:()=>{ctxOpen=false; renderAll();}}
+      {label:"↳", action:()=>addChildFrom(selectedId)},
+      {label:"✏️", action:()=>beginEdit(selectedId,true)},
+      {label:"⤵️", action:()=>toggleCollapse(selectedId)},
+      {label:"🗑️", action:()=>deleteSubtree(selectedId)},
+      {label:"✖", action:()=>{ctxOpen=false; renderAll();}}
     ];
 
     const startX = boxX + 14;
@@ -753,10 +721,7 @@
       b.setAttribute("stroke", "rgba(255,255,255,.10)");
       b.setAttribute("stroke-width","1");
       b.style.cursor = "pointer";
-      b.onpointerdown = (e) => {
-        e.stopPropagation();
-        it.action();
-      };
+      b.onpointerdown = (e) => { e.stopPropagation(); it.action(); };
       ctxG.appendChild(b);
 
       const t = document.createElementNS("http://www.w3.org/2000/svg","text");
@@ -765,8 +730,8 @@
       t.setAttribute("text-anchor","middle");
       t.setAttribute("dominant-baseline","middle");
       t.style.fontFamily = "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
-      t.style.fontWeight = (it.label==="B") ? "800" : "700";
-      t.style.fontSize = (it.label.length>2) ? "14px" : "16px";
+      t.style.fontWeight = "700";
+      t.style.fontSize = "16px";
       t.style.fill = "rgba(255,255,255,.92)";
       t.textContent = it.label;
       t.style.pointerEvents = "none";
@@ -783,39 +748,7 @@
     renderDotsAndCtx();
   }
 
-  // --------- Formatting actions ---------
-  function ensureFmt(n){
-    n.fmt ||= {bold:false, italic:false, align:"center"};
-  }
-  function toggleFmt(k){
-    const n = getNode(selectedId); if (!n) return;
-    ensureFmt(n);
-    n.fmt[k] = !n.fmt[k];
-    autosave();
-    renderAll();
-  }
-  function setAlign(a){
-    const n = getNode(selectedId); if (!n) return;
-    ensureFmt(n);
-    n.fmt.align = a;
-    autosave();
-    renderAll();
-  }
-  function cycleColor(){
-    const n = getNode(selectedId); if (!n) return;
-    const i = PALETTE.findIndex(p => p.fill===n.style.fill && p.stroke===n.style.stroke);
-    const next = PALETTE[(Math.max(0,i)+1) % PALETTE.length];
-    n.style = {...next};
-    autosave();
-    renderAll();
-  }
-
-  function closeCtx(){
-    ctxOpen = false;
-    renderAll();
-  }
-
-  // --------- Editor overlay (crisp + normal selection) ---------
+  // ---------- Editor ----------
   function beginEdit(id, selectAll=false){
     const n = getNode(id);
     if (!n) return;
@@ -825,19 +758,15 @@
     renderAll();
 
     const {w,h} = nodeBox(n);
-
-    // position in client space
     const p = worldToClient(n.x, n.y);
-    const v = map.view;
+    const k = map.view.k;
 
     editor.style.left = (p.x) + "px";
     editor.style.top  = (p.y) + "px";
-    editor.style.width = (w * v.k) + "px";
-    editor.style.height = (h * v.k) + "px";
-    editor.style.fontSize = Math.max(14, Math.round(20 * v.k)) + "px";
-    editor.style.fontWeight = (n.fmt && n.fmt.bold) ? "700" : "600";
-    editor.style.fontStyle  = (n.fmt && n.fmt.italic) ? "italic" : "normal";
-    editor.style.textAlign  = (n.fmt && n.fmt.align) ? n.fmt.align : "center";
+    editor.style.width = (w * k) + "px";
+    editor.style.height = (h * k) + "px";
+    editor.style.fontSize = Math.max(14, Math.round(20 * k)) + "px";
+    editor.style.textAlign = "center";
 
     editor.value = (n.text || "").trim() || "Идея";
     editor.style.display = "block";
@@ -847,31 +776,23 @@
     const finish = (save) => {
       editor.onkeydown = null;
       editor.onblur = null;
-
       editor.style.display = "none";
-
       if (save){
         n.text = (editor.value || "").trim() || "Идея";
         autosave();
       }
-
       editingId = null;
       renderAll();
     };
 
     editor.onkeydown = (e) => {
-      if (e.key === "Enter"){
-        e.preventDefault();
-        editor.blur();
-      } else if (e.key === "Escape"){
-        e.preventDefault();
-        finish(false);
-      }
+      if (e.key === "Enter"){ e.preventDefault(); editor.blur(); }
+      else if (e.key === "Escape"){ e.preventDefault(); finish(false); }
     };
     editor.onblur = () => finish(true);
   }
 
-  // --------- Tap logic for dbl/triple ---------
+  // ---------- Tap logic ----------
   const tap = { id:null, count:0, t:0, timer:null };
   const TAP_WINDOW = 420;
 
@@ -889,31 +810,20 @@
       if (tap.timer) clearTimeout(tap.timer);
       tap.timer = setTimeout(() => {
         if (tap.id !== id) return;
-
-        if (tap.count === 2){
-          addChildFrom(id);
-        } else if (tap.count >= 3){
-          beginEdit(id, true);
-        }
+        if (tap.count === 2) addChildFrom(id);
+        else if (tap.count >= 3) beginEdit(id, true);
         tap.id=null; tap.count=0; tap.timer=null;
       }, TAP_WINDOW + 30);
     });
   }
 
-  // --------- Dragging ---------
+  // ---------- Dragging / pan ----------
   let drag = null;
 
   function startNodeDrag(e, nodeId){
     const n = getNode(nodeId);
     if (!n) return;
-    drag = {
-      kind:"node",
-      id: nodeId,
-      pid: e.pointerId,
-      sx: e.clientX, sy: e.clientY,
-      baseX: n.x, baseY: n.y,
-      moved:false
-    };
+    drag = { kind:"node", id:nodeId, pid:e.pointerId, sx:e.clientX, sy:e.clientY, baseX:n.x, baseY:n.y, moved:false };
     svg.setPointerCapture(e.pointerId);
   }
 
@@ -923,8 +833,7 @@
     if (drag.kind === "node"){
       const dx = (e.clientX - drag.sx) / map.view.k;
       const dy = (e.clientY - drag.sy) / map.view.k;
-      const dist = Math.hypot(dx, dy);
-      if (!drag.moved && dist > 2) drag.moved = true;
+      if (!drag.moved && Math.hypot(dx,dy) > 2) drag.moved = true;
       if (!drag.moved) return;
 
       const n = getNode(drag.id);
@@ -938,10 +847,8 @@
     if (drag.kind === "pan"){
       const dx = e.clientX - drag.sx;
       const dy = e.clientY - drag.sy;
-      const dist = Math.hypot(dx, dy);
-      if (!drag.moved && dist > 4) drag.moved = true;
+      if (!drag.moved && Math.hypot(dx,dy) > 4) drag.moved = true;
       if (!drag.moved) return;
-
       map.view.x = drag.baseX + dx;
       map.view.y = drag.baseY + dy;
       applyTransform();
@@ -950,31 +857,36 @@
 
   svg.addEventListener("pointerup", (e) => {
     if (drag && drag.pid === e.pointerId){
-      svg.releasePointerCapture(e.pointerId);
+      try{ svg.releasePointerCapture(e.pointerId); }catch(_){}
       drag = null;
     }
   });
 
-  // pan on empty
+  // пан на пустом
   svg.addEventListener("pointerdown", (e) => {
     if (editingId) return;
 
-    const targetNode = e.target.closest ? e.target.closest('[data-id], [data-dot-for]') : null;
-    if (!targetNode && !e.target.closest('#ctx') && !e.target.closest('#dots')){
+    const onNode = safeClosest(e.target, '[data-id]') || safeClosest(e.target, '[data-dot-for]');
+    const onMenu = safeClosest(e.target, '#ctx') || safeClosest(e.target, '#dots');
+
+    if (!onNode && !onMenu){
       selectedId = null;
       ctxOpen = false;
       renderAll();
 
-      drag = { kind:"pan", pid:e.pointerId, sx:e.clientX, sy:e.clientY, baseX: map.view.x, baseY: map.view.y, moved:false };
+      drag = { kind:"pan", pid:e.pointerId, sx:e.clientX, sy:e.clientY, baseX:map.view.x, baseY:map.view.y, moved:false };
       svg.setPointerCapture(e.pointerId);
     }
   });
 
-  // dblclick empty -> new node
+  // Даблклик на пустом -> новая идея
   svg.addEventListener("dblclick", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (editingId) return;
-    const onNode = e.target.closest && (e.target.closest('[data-id]') || e.target.closest('[data-dot-for]'));
-    const onMenu = e.target.closest && (e.target.closest('#ctx') || e.target.closest('#dots'));
+
+    const onNode = safeClosest(e.target, '[data-id]') || safeClosest(e.target, '[data-dot-for]');
+    const onMenu = safeClosest(e.target, '#ctx') || safeClosest(e.target, '#dots');
     if (onNode || onMenu) return;
 
     const p = clientToWorld(e.clientX, e.clientY);
@@ -996,7 +908,12 @@
     beginEdit(id, true);
   });
 
-  // wheel zoom (SVG будет чётким)
+  // анти-яндекс “перевести/найти” на dblclick по холсту
+  wrap.addEventListener("dblclick", (e) => {
+    e.preventDefault();
+  });
+
+  // zoom
   wrap.addEventListener("wheel", (e) => {
     e.preventDefault();
     if (!map) return;
@@ -1008,7 +925,6 @@
     nk = Math.round(nk / step) * step;
 
     const before = clientToWorld(e.clientX, e.clientY);
-
     const r = svg.getBoundingClientRect();
     const vx = e.clientX - r.left;
     const vy = e.clientY - r.top;
@@ -1022,24 +938,7 @@
     autosave();
   }, {passive:false});
 
-  // Esc closes ctx / editor
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape"){
-      if (editingId){
-        editor.blur();
-        return;
-      }
-      if (ctxOpen){
-        closeCtx();
-      }
-    }
-    if ((e.key==="Delete" || e.key==="Backspace") && selectedId && !editingId){
-      e.preventDefault();
-      deleteSubtree(selectedId);
-    }
-  });
-
-  // --------- Projects UI ---------
+  // ---------- Projects UI ----------
   function rebuildProjectsUI(){
     const projects = Object.values(store.projects).sort((a,b)=> (b.updatedAt||0)-(a.updatedAt||0));
     projList.innerHTML = "";
@@ -1047,10 +946,7 @@
       const item = document.createElement("div");
       item.className = "ddItem";
       item.innerHTML = `<span>${escapeHtml(p.name || "Без названия")}</span><span class="ddMeta">${new Date(p.updatedAt||p.createdAt||Date.now()).toLocaleDateString()}</span>`;
-      item.onclick = () => {
-        setActiveProject(p.id);
-        projList.style.display = "none";
-      };
+      item.onclick = () => { setActiveProject(p.id); projList.style.display="none"; };
       projList.appendChild(item);
     });
 
@@ -1059,8 +955,7 @@
   }
 
   projBtn.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     projList.style.display = (projList.style.display === "block") ? "none" : "block";
     downloadDrop.style.display = "none";
   });
@@ -1080,22 +975,30 @@
   function setActiveProject(id){
     const p = store.projects[id];
     if (!p) return;
+
+    // защита: если в проекте почему-то нет узлов — восстановим
+    if (!p.data || !Array.isArray(p.data.nodes) || !p.data.nodes.length){
+      p.data = createEmptyProject(p.name || "Восстановлено").data;
+      saveStore();
+    }
+
     store.activeId = id;
     active = p;
     map = JSON.parse(JSON.stringify(p.data));
+
     selectedId = null;
     editingId = null;
     ctxOpen = false;
+
     saveStore();
     rebuildProjectsUI();
     renderAll();
   }
 
-  // --------- Download menu ---------
+  // ---------- Download menu ----------
   function closeDownload(){ downloadDrop.style.display = "none"; }
   downloadBtn.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
+    e.preventDefault(); e.stopPropagation();
     downloadDrop.style.display = (downloadDrop.style.display === "block") ? "none" : "block";
     projList.style.display = "none";
   });
@@ -1105,9 +1008,8 @@
   });
 
   exportOneBtn.onclick = () => {
-    if (!active) return;
     commitMap();
-    const payload = { kind:"mindmap_project", version:8, project: store.projects[store.activeId] };
+    const payload = { kind:"mindmap_project", version:9, project: store.projects[store.activeId] };
     downloadJson(payload, safeName(active.name || "mindmap") + ".json");
     closeDownload();
     showToast("Экспортировано");
@@ -1115,7 +1017,7 @@
 
   exportAllBtn.onclick = () => {
     commitMap();
-    const payload = { kind:"mindmap_store", version:8, store };
+    const payload = { kind:"mindmap_store", version:9, store };
     downloadJson(payload, "mindmaps_all.json");
     closeDownload();
     showToast("Экспорт всех готов");
@@ -1175,21 +1077,7 @@
     closeDownload();
   });
 
-  // --------- Helpers ---------
-  function downloadJson(obj, filename){
-    const blob = new Blob([JSON.stringify(obj, null, 2)], {type:"application/json"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(a.href);
-  }
-  function safeName(s){ return (s||"mindmap").replace(/[^\w\d\-_.]+/g,"_"); }
-  function escapeHtml(s){
-    return String(s).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
-  }
-
-  // --------- Init ---------
+  // ---------- Init ----------
   rebuildProjectsUI();
   setActiveProject(store.activeId);
 
