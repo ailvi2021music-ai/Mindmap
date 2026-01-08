@@ -16,8 +16,6 @@
       --toolStroke:rgba(255,255,255,.10);
       --glass: rgba(255,255,255,.72);
       --glass2: rgba(255,255,255,.82);
-      --triggerBg: rgba(20,28,40,.88);
-      --triggerStroke: rgba(255,255,255,.14);
     }
 
     *{ box-sizing:border-box; }
@@ -190,12 +188,6 @@
     }
     .node:active{ cursor: grabbing; }
 
-    .node .icon{
-      width:20px; height:20px;
-      display:flex; align-items:center; justify-content:center;
-      font-size:18px; line-height:1;
-      flex:0 0 auto;
-    }
     .node .text{
       flex:1 1 auto;
       line-height:1.15;
@@ -226,7 +218,7 @@
       white-space: pre-wrap;
     }
 
-    /* Collapse dot as hollow/filled circle */
+    /* Collapse dot */
     .collapseDot{
       position:absolute;
       width: 18px; height: 18px;
@@ -247,31 +239,30 @@
       background: transparent;
       opacity: .35;
     }
-    .collapseDot.collapsed .inner{
-      opacity: .70;
-    }
+    .collapseDot.collapsed .inner{ opacity: .70; }
 
-    /* Small trigger (⋯) under selected node */
+    /* Tiny "..." trigger (hover/selected) */
     .menuTrigger{
       position:fixed;
       z-index:95;
       display:none;
-      width: 34px; height: 24px;
+      width: 18px; height: 18px;
       border-radius: 999px;
-      background: var(--triggerBg);
-      border:1px solid var(--triggerStroke);
-      box-shadow: var(--shadow);
-      color: rgba(255,255,255,.92);
+      background: rgba(255,255,255,.90);
+      border:2px solid rgba(11,19,36,.22);
+      box-shadow: 0 12px 26px rgba(10,20,40,.16);
+      color: rgba(11,19,36,.80);
       align-items:center;
       justify-content:center;
-      font-size: 16px;
+      font-size: 14px;
+      line-height: 1;
       cursor:pointer;
       user-select:none;
       -webkit-user-select:none;
       backdrop-filter: blur(10px);
     }
     .menuTrigger:hover{
-      border-color: rgba(89,195,255,.45);
+      box-shadow: 0 12px 26px rgba(10,20,40,.16), 0 0 0 3px rgba(89,195,255,.16);
     }
 
     .ctx{
@@ -306,6 +297,39 @@
     }
     .ctx .csep{ width:1px; height:22px; background: rgba(255,255,255,.12); margin:0 2px; }
     .ctx .label{ font-size:12px; color: rgba(255,255,255,.70); padding:0 6px 0 2px; }
+
+    /* Emoji picker */
+    .emojiPop{
+      position:fixed;
+      z-index:97;
+      display:none;
+      width: 308px;
+      max-height: 220px;
+      overflow:auto;
+      background: rgba(20,28,40,.92);
+      border:1px solid rgba(255,255,255,.12);
+      border-radius:14px;
+      box-shadow: var(--shadow);
+      padding:10px;
+      backdrop-filter: blur(10px);
+    }
+    .emojiGrid{
+      display:grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap:6px;
+    }
+    .emojiCell{
+      width: 26px; height: 26px;
+      display:flex; align-items:center; justify-content:center;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.06);
+      cursor:pointer;
+      font-size:16px;
+      user-select:none;
+      -webkit-user-select:none;
+    }
+    .emojiCell:hover{ border-color: rgba(89,195,255,.50); }
 
     .toast{
       position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
@@ -358,10 +382,8 @@
       <div class="toolbtn" data-tool="center"><span>🎯</span><div class="toolhint">Center on selection (C)</div></div>
     </div>
 
-    <!-- Trigger under selected node -->
     <div class="menuTrigger" id="menuTrigger" title="Меню">⋯</div>
 
-    <!-- Context menu (opens only via trigger) -->
     <div class="ctx" id="ctx">
       <div class="label">Узел</div>
       <div class="cbtn" id="ctxChild" title="Дочерний">↳</div>
@@ -380,13 +402,17 @@
       <div class="csep"></div>
 
       <div class="cbtn" id="ctxColor" title="Цвет">🎨</div>
-      <div class="cbtn" id="ctxIcon" title="Иконка">😊</div>
+      <div class="cbtn" id="ctxEmoji" title="Эмодзи в текст">😊</div>
       <div class="cbtn" id="ctxCollapse" title="Свернуть/развернуть">⤵️</div>
 
       <div class="csep"></div>
 
       <div class="cbtn" id="ctxDelete" title="Удалить">🗑️</div>
       <div class="cbtn" id="ctxClose" title="Закрыть">✖</div>
+    </div>
+
+    <div class="emojiPop" id="emojiPop">
+      <div class="emojiGrid" id="emojiGrid"></div>
     </div>
 
     <div id="scene">
@@ -402,7 +428,7 @@
 
 <script>
 (() => {
-  const STORE_KEY = "mindmap_projects_v4";
+  const STORE_KEY = "mindmap_projects_v5";
 
   const PALETTE = [
     {name:"Sky",    fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.62)"},
@@ -412,7 +438,14 @@
     {name:"Violet", fill:"rgba(176,122,255,.18)", stroke:"rgba(135,90,210,.64)"},
     {name:"Slate",  fill:"rgba(255,255,255,.80)", stroke:"rgba(11,19,36,.18)"}
   ];
-  const ICONS = ["💡","✅","🎯","📌","🧠","⚡","🧩","🔥","📎","🔗","⭐","📝","📚","🧪","🐞","🧭"];
+
+  // Emoji list for picker (lightweight but useful)
+  const EMOJIS = [
+    "💡","✅","🎯","📌","🧠","⚡","🧩","🔥","📎","🔗","⭐","📝","📚","🧪","🐞","🧭",
+    "🚀","🧱","🗂️","📈","📊","🧷","🧵","🧲","🧰","🪄","💎","🗝️","🧿","🧸","🫧","🌿",
+    "📣","🎛️","🎚️","🎧","🎵","🎬","📷","🧾","🗒️","✍️","🧑‍💻","🧑‍🏫","🧑‍🎨","🧑‍🔧","🧑‍💼","🤝",
+    "❗","❓","🟢","🟡","🔴","🟣","🔵","⚪","⚫","🟧","🟦","🟩","🟥","🟨","🟪","🟫"
+  ];
 
   const wrap = document.getElementById("wrap");
   const topbar = document.getElementById("topbar");
@@ -424,7 +457,11 @@
 
   const ctx = document.getElementById("ctx");
   const menuTrigger = document.getElementById("menuTrigger");
+  const emojiPop = document.getElementById("emojiPop");
+  const emojiGrid = document.getElementById("emojiGrid");
+
   let ctxOpen = false;
+  let emojiOpen = false;
 
   const projectSelect = document.getElementById("projectSelect");
   const importOne = document.getElementById("importOne");
@@ -449,7 +486,7 @@
     const raw = mctx.measureText(t).width;
     const minW = 150;
     const maxW = 360;
-    const w = Math.max(minW, Math.min(maxW, Math.ceil(raw + 72)));
+    const w = Math.max(minW, Math.min(maxW, Math.ceil(raw + 48))); // icons removed => smaller padding
     const h = 58;
     return {w,h};
   }
@@ -471,6 +508,10 @@
   const tap = { id:null, count:0, t:0, timer:null };
   const TAP_WINDOW = 420;
 
+  // Hover "sticky" for trigger
+  let hoverNodeId = null;
+  let hoverTrigger = false;
+
   function saveStore(){
     try{ localStorage.setItem(STORE_KEY, JSON.stringify(store)); }catch(e){}
   }
@@ -484,19 +525,20 @@
     }catch(e){}
     return null;
   }
+
   function normalizeMapData(data){
     data.view ||= {x:24,y:24,k:1};
     data.nodes ||= [];
     data.links ||= [];
     data.nodes.forEach(n => {
       n.text ||= "Идея";
-      n.icon = (typeof n.icon === "string") ? n.icon : "💡";
+      // Remove icon field if any old data exists
+      if ("icon" in n) delete n.icon;
+
       n.style ||= { fill: PALETTE[0].fill, stroke: PALETTE[0].stroke };
       n.childColorNext ||= 0;
       n.parentId = n.parentId || null;
       n.collapsed = !!n.collapsed;
-
-      // NEW: font style
       n.fmt ||= { bold:false, italic:false, align:"left" };
 
       const m = measureNode(n.text);
@@ -515,7 +557,6 @@
     data.nodes.push({
       id:centerId, x:260, y:180, w:m.w, h:m.h,
       text:"Центральная идея",
-      icon:"🎯",
       style:{fill: PALETTE[0].fill, stroke: PALETTE[0].stroke},
       childColorNext:0,
       parentId:null,
@@ -556,7 +597,7 @@
     selectedId = null;
     editingId = null;
     drag = null;
-    closeCtx();
+    closeAllPopups();
     saveStore();
     rebuildProjectSelect();
     renderAll();
@@ -593,13 +634,13 @@
     map.links.push({ id: uid(), a, b });
   }
 
-  function addNodeAt(x,y, text="Новая идея", icon="💡", style=PALETTE[0]){
+  function addNodeAt(x,y, text="Новая идея", style=PALETTE[0]){
     drag = null;
     const m = measureNode(text);
     const id = uid();
     map.nodes.push({
       id, x, y, w:m.w, h:m.h,
-      text, icon,
+      text,
       style: {fill: style.fill, stroke: style.stroke},
       childColorNext: 0,
       parentId: null,
@@ -607,7 +648,7 @@
       fmt:{bold:false, italic:false, align:"left"}
     });
     selectedId = id;
-    closeCtx();
+    closeAllPopups();
     autosave();
     renderAll();
     return id;
@@ -630,7 +671,6 @@
     map.nodes.push({
       id, x, y, w:m.w, h:m.h,
       text:"Дочерняя идея",
-      icon:"✅",
       style:{fill: style.fill, stroke: style.stroke},
       childColorNext: 0,
       parentId: parentId,
@@ -640,7 +680,7 @@
     addLink(parentId, id);
 
     selectedId = id;
-    closeCtx();
+    closeAllPopups();
     autosave();
     renderAll();
     return id;
@@ -660,7 +700,6 @@
     map.nodes.push({
       id, x, y, w:m.w, h:m.h,
       text:"Новая идея",
-      icon: n.icon || "💡",
       style: n.style ? {fill:n.style.fill, stroke:n.style.stroke} : {fill:PALETTE[0].fill, stroke:PALETTE[0].stroke},
       childColorNext: 0,
       parentId,
@@ -670,7 +709,7 @@
     if (parentId) addLink(parentId, id);
 
     selectedId = id;
-    closeCtx();
+    closeAllPopups();
     autosave();
     renderAll();
     return id;
@@ -688,7 +727,7 @@
     map.nodes = map.nodes.filter(n => !ids.has(n.id));
     map.links = map.links.filter(l => !ids.has(l.a) && !ids.has(l.b));
     if (selectedId && ids.has(selectedId)) selectedId = null;
-    closeCtx();
+    closeAllPopups();
     autosave();
     renderAll();
   }
@@ -787,35 +826,46 @@
       div.style.borderColor = n.style?.stroke || "rgba(11,19,36,.18)";
       div.setAttribute("data-id", n.id);
 
-      const icon = document.createElement("div");
-      icon.className = "icon";
-      icon.textContent = n.icon || "";
-
       const text = document.createElement("div");
       text.className = "text";
       text.textContent = n.text || "";
 
-      div.appendChild(icon);
       div.appendChild(text);
       applyNodeFmt(div, n);
 
-      // Click selects ONLY (does not open menu)
+      // Hover handling
+      div.addEventListener("mouseenter", () => {
+        hoverNodeId = n.id;
+        positionTriggerAndMenus();
+      });
+      div.addEventListener("mouseleave", () => {
+        hoverNodeId = null;
+        setTimeout(() => {
+          // if user moved onto trigger, keep it
+          if (!hoverNodeId && !hoverTrigger && selectedId !== n.id){
+            positionTriggerAndMenus();
+          }
+        }, 0);
+      });
+
+      // Select node on click
       div.addEventListener("pointerdown", (e) => {
         if (editingId) return;
         e.preventDefault();
-
         selectedId = n.id;
-        ctxOpen = false;
-        ctx.style.display = "none";
         renderSelectionOnly();
-        positionTriggerAndCtx();
+        // do not auto-open ctx
+        ctxOpen = false;
+        emojiOpen = false;
+        ctx.style.display = "none";
+        emojiPop.style.display = "none";
+        positionTriggerAndMenus();
         updateCtxToggles();
       });
 
       // Drag move
       div.addEventListener("pointerdown", (e) => {
         if (editingId) return;
-        // already prevented default above, but keep flow safe
         drag = {
           kind: "node",
           nodeId: n.id,
@@ -852,7 +902,7 @@
         }
 
         drawLinks();
-        positionTriggerAndCtx();
+        positionTriggerAndMenus();
         autosave();
       });
 
@@ -862,7 +912,7 @@
         }
       }
 
-      // Double/Triple click logic (microstep)
+      // Double/Triple click
       div.addEventListener("pointerup", (e) => {
         const moved = !!(drag && drag.kind === "node" && drag.pointerId === e.pointerId && drag.moved);
         endNodeDrag(e);
@@ -879,16 +929,12 @@
         tap.timer = setTimeout(() => {
           if (tap.id !== n.id) return;
 
-          // DOUBLE CLICK: create child + start editing it
           if (tap.count === 2){
             const childId = addChildFrom(n.id);
             if (childId){
-              // open edit instantly
               beginEdit(childId, true);
             }
-          }
-          // TRIPLE+: edit this node
-          else if (tap.count >= 3){
+          } else if (tap.count >= 3){
             beginEdit(n.id, true);
           }
 
@@ -901,7 +947,7 @@
 
       nodesLayer.appendChild(div);
 
-      // Collapse dot (tree)
+      // Collapse dot
       const kids = childrenOf(n.id);
       if (kids.length){
         const dot = document.createElement("div");
@@ -932,82 +978,126 @@
     applyTransform();
     drawLinks();
     renderNodes();
-    positionTriggerAndCtx();
+    positionTriggerAndMenus();
     updateCtxToggles();
   }
 
-  function closeCtx(){
+  function closeAllPopups(){
     ctxOpen = false;
+    emojiOpen = false;
     ctx.style.display = "none";
+    emojiPop.style.display = "none";
     menuTrigger.style.display = "none";
   }
 
-  // Trigger + menu positioning (relative to selected node)
-  function positionTriggerAndCtx(){
-    if (!selectedId) { closeCtx(); return; }
+  // Decide which node should show trigger: hover wins, else selected
+  function triggerOwner(){
+    if (hoverNodeId) return hoverNodeId;
+    return selectedId;
+  }
 
-    const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(selectedId)}"]`);
-    const n = getNode(selectedId);
-    if (!nodeEl || !n || isHiddenByCollapse(selectedId)) { closeCtx(); return; }
+  function positionTriggerAndMenus(){
+    const ownerId = triggerOwner();
+    if (!ownerId){ closeAllPopups(); return; }
+
+    const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(ownerId)}"]`);
+    const n = getNode(ownerId);
+    if (!nodeEl || !n || isHiddenByCollapse(ownerId)) { closeAllPopups(); return; }
 
     const rect = nodeEl.getBoundingClientRect();
     const headerRect = topbar.getBoundingClientRect();
     const safeTop = headerRect.bottom + 6;
 
-    // Trigger under node, centered
-    const trigW = 34, trigH = 24, trigGap = 2;
+    // Trigger: small circle under node center
+    const trigW = 18, trigH = 18, gap = 2;
     let tx = rect.left + rect.width/2 - trigW/2;
-    let ty = rect.bottom + trigGap;
+    let ty = rect.bottom + gap;
 
-    // If trigger would go outside bottom, place it above node
     if (ty + trigH > window.innerHeight - 8){
-      ty = rect.top - trigH - trigGap;
+      ty = rect.top - trigH - gap;
     }
-    // Keep it below header if placed above
     ty = Math.max(safeTop, ty);
-
     tx = Math.max(10, Math.min(window.innerWidth - trigW - 10, tx));
+
+    // Color per node (border color)
+    const stroke = (n.style && n.style.stroke) ? n.style.stroke : "rgba(11,19,36,.22)";
+    menuTrigger.style.borderColor = stroke;
+    menuTrigger.style.color = stroke;
 
     menuTrigger.style.left = tx + "px";
     menuTrigger.style.top  = ty + "px";
     menuTrigger.style.display = "flex";
 
-    // Menu pops near trigger (not far)
-    const ctxW = 520; // wide because we added typography controls
-    const ctxH = 52;
-    const gap = 4;
+    // If ctx is open, position it close to trigger
+    if (ctxOpen){
+      const ctxW = 520, ctxH = 52, gap2 = 6;
+      let cx = rect.left + rect.width/2 - ctxW/2;
+      cx = Math.max(12, Math.min(window.innerWidth - ctxW - 12, cx));
 
-    let cx = rect.left + rect.width/2 - ctxW/2;
-    cx = Math.max(12, Math.min(window.innerWidth - ctxW - 12, cx));
+      let cy = ty + trigH + gap2;
+      if (cy + ctxH > window.innerHeight - 8){
+        cy = ty - ctxH - gap2;
+      }
+      cy = Math.max(safeTop, cy);
 
-    // Prefer below trigger
-    let cy = ty + trigH + gap;
-    // If not enough space, place above trigger
-    if (cy + ctxH > window.innerHeight - 8){
-      cy = ty - ctxH - gap;
+      ctx.style.left = cx + "px";
+      ctx.style.top  = cy + "px";
+      ctx.style.display = "flex";
+    } else {
+      ctx.style.display = "none";
     }
-    cy = Math.max(safeTop, cy);
 
-    ctx.style.left = cx + "px";
-    ctx.style.top  = cy + "px";
-    ctx.style.display = ctxOpen ? "flex" : "none";
+    // Emoji pop near ctx (or trigger if ctx closed)
+    if (emojiOpen){
+      const anchor = ctxOpen ? ctx.getBoundingClientRect() : menuTrigger.getBoundingClientRect();
+      const popW = 308, popH = 220, gap3 = 8;
+
+      let ex = anchor.left;
+      ex = Math.max(12, Math.min(window.innerWidth - popW - 12, ex));
+
+      let ey = anchor.bottom + gap3;
+      if (ey + popH > window.innerHeight - 8){
+        ey = anchor.top - popH - gap3;
+      }
+      ey = Math.max(safeTop, ey);
+
+      emojiPop.style.left = ex + "px";
+      emojiPop.style.top  = ey + "px";
+      emojiPop.style.display = "block";
+    } else {
+      emojiPop.style.display = "none";
+    }
   }
 
+  // Trigger hover sticky
+  menuTrigger.addEventListener("mouseenter", () => { hoverTrigger = true; });
+  menuTrigger.addEventListener("mouseleave", () => {
+    hoverTrigger = false;
+    setTimeout(() => positionTriggerAndMenus(), 0);
+  });
+
+  // Open ctx by clicking trigger (owner becomes selected)
   menuTrigger.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     e.stopPropagation();
-    if (!selectedId) return;
+    const ownerId = triggerOwner();
+    if (!ownerId) return;
+    selectedId = ownerId; // ensure selection follows
+    renderSelectionOnly();
+
     ctxOpen = !ctxOpen;
-    positionTriggerAndCtx();
+    if (!ctxOpen) emojiOpen = false;
+    positionTriggerAndMenus();
     updateCtxToggles();
   });
 
-  // Clicking outside closes menu (but keeps selection)
+  // Clicking outside closes popups
   document.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".ctx") || e.target.closest(".menuTrigger")) return;
-    if (ctxOpen){
+    if (e.target.closest(".ctx") || e.target.closest(".menuTrigger") || e.target.closest(".emojiPop")) return;
+    if (ctxOpen || emojiOpen){
       ctxOpen = false;
-      positionTriggerAndCtx();
+      emojiOpen = false;
+      positionTriggerAndMenus();
     }
   });
 
@@ -1091,6 +1181,18 @@
     textEl.addEventListener("blur", onBlur);
   }
 
+  // Insert emoji to the beginning of text (with space)
+  function insertEmojiToNode(nodeId, emoji){
+    const n = getNode(nodeId);
+    if (!n) return;
+    const t = (n.text || "").trim();
+    n.text = t ? `${emoji} ${t}` : `${emoji}`;
+    const m = measureNode(n.text);
+    n.w = m.w; n.h = m.h;
+    autosave();
+    renderAll();
+  }
+
   // ===== Context actions =====
   document.getElementById("ctxChild").onclick = () => {
     if (!selectedId) return;
@@ -1142,22 +1244,45 @@
     n.style = {fill: next.fill, stroke: next.stroke};
     autosave(); renderAll();
   };
-  document.getElementById("ctxIcon").onclick = () => {
-    const n = getNode(selectedId); if (!n) return;
-    const i = ICONS.indexOf(n.icon);
-    n.icon = ICONS[(i+1+ICONS.length) % ICONS.length];
-    autosave(); renderAll();
+
+  document.getElementById("ctxEmoji").onclick = () => {
+    if (!selectedId) return;
+    emojiOpen = !emojiOpen;
+    positionTriggerAndMenus();
   };
+
   document.getElementById("ctxCollapse").onclick = () => { if (selectedId) toggleCollapse(selectedId); };
   document.getElementById("ctxDelete").onclick = () => { if (selectedId) deleteSubtree(selectedId); };
-  document.getElementById("ctxClose").onclick = () => { ctxOpen = false; positionTriggerAndCtx(); };
+  document.getElementById("ctxClose").onclick = () => {
+    ctxOpen = false;
+    emojiOpen = false;
+    positionTriggerAndMenus();
+  };
+
+  // Build emoji grid
+  function buildEmojiGrid(){
+    emojiGrid.innerHTML = "";
+    for (const em of EMOJIS){
+      const cell = document.createElement("div");
+      cell.className = "emojiCell";
+      cell.textContent = em;
+      cell.onclick = () => {
+        if (!selectedId) return;
+        insertEmojiToNode(selectedId, em);
+        emojiOpen = false;
+        positionTriggerAndMenus();
+      };
+      emojiGrid.appendChild(cell);
+    }
+  }
+  buildEmojiGrid();
 
   // ===== Scene pan/zoom =====
   scene.addEventListener("pointerdown", (e) => {
     pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
 
-    const onNode = !!e.target.closest(".node") || !!e.target.closest(".collapseDot") || !!e.target.closest(".ctx") || !!e.target.closest(".menuTrigger");
-    if (!onNode){
+    const onUi = !!e.target.closest(".node") || !!e.target.closest(".collapseDot") || !!e.target.closest(".ctx") || !!e.target.closest(".menuTrigger") || !!e.target.closest(".emojiPop");
+    if (!onUi){
       if (editingId){
         const editor = nodesLayer.querySelector(`.node[data-id="${CSS.escape(editingId)}"] .text`);
         if (editor) editor.blur();
@@ -1165,15 +1290,18 @@
 
       if (tool === "node"){
         const p = clientToWorld(e.clientX, e.clientY);
-        addNodeAt(p.x - 90, p.y - 30, "Новая идея", "💡", PALETTE[0]);
+        const id = addNodeAt(p.x - 90, p.y - 30, "Новая идея", PALETTE[0]);
+        beginEdit(id, true);
         return;
       }
 
-      // clicking empty space deselects
+      // empty space deselect
       selectedId = null;
+      hoverNodeId = null;
       ctxOpen = false;
+      emojiOpen = false;
       renderSelectionOnly();
-      closeCtx();
+      closeAllPopups();
 
       drag = {
         kind:"pan",
@@ -1215,7 +1343,7 @@
       map.view.y = vy - before.y * nk;
 
       applyTransform();
-      positionTriggerAndCtx();
+      positionTriggerAndMenus();
       autosave();
       return;
     }
@@ -1232,7 +1360,7 @@
     map.view.x = drag.startViewX + dx;
     map.view.y = drag.startViewY + dy;
     applyTransform();
-    positionTriggerAndCtx();
+    positionTriggerAndMenus();
     autosave();
   });
 
@@ -1263,14 +1391,14 @@
     map.view.y = vy - before.y * nk;
 
     applyTransform();
-    positionTriggerAndCtx();
+    positionTriggerAndMenus();
     autosave();
   }, {passive:false});
 
   scene.addEventListener("dblclick", (e) => {
-    if (e.target.closest(".node") || e.target.closest(".collapseDot") || e.target.closest(".ctx") || e.target.closest(".menuTrigger")) return;
+    if (e.target.closest(".node") || e.target.closest(".collapseDot") || e.target.closest(".ctx") || e.target.closest(".menuTrigger") || e.target.closest(".emojiPop")) return;
     const p = clientToWorld(e.clientX, e.clientY);
-    const id = addNodeAt(p.x - 90, p.y - 30, "Новая идея", "💡", PALETTE[0]);
+    const id = addNodeAt(p.x - 90, p.y - 30, "Новая идея", PALETTE[0]);
     beginEdit(id, true);
   });
 
@@ -1294,7 +1422,7 @@
     map.view.x = cx - (n.x + n.w/2) * map.view.k;
     map.view.y = cy - (n.y + n.h/2) * map.view.k;
     applyTransform();
-    positionTriggerAndCtx();
+    positionTriggerAndMenus();
     autosave();
     setTool("select");
   }
@@ -1381,7 +1509,7 @@
   document.getElementById("resetView").onclick = () => {
     map.view = {x:24,y:24,k:1};
     applyTransform();
-    positionTriggerAndCtx();
+    positionTriggerAndMenus();
     autosave();
     showToast("Сброшено");
   };
@@ -1390,7 +1518,7 @@
   document.getElementById("exportOne").onclick = () => {
     if (!active) return;
     commitMap();
-    const payload = { kind:"mindmap_project", version:4, project: store.projects[store.activeId] };
+    const payload = { kind:"mindmap_project", version:5, project: store.projects[store.activeId] };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1430,7 +1558,7 @@
 
   document.getElementById("exportAll").onclick = () => {
     commitMap();
-    const payload = { kind:"mindmap_store", version:4, store };
+    const payload = { kind:"mindmap_store", version:5, store };
     const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1495,10 +1623,9 @@
       e.preventDefault(); deleteSubtree(selectedId);
     }
 
-    // ESC closes menu
-    if (e.key === "Escape" && ctxOpen){
-      ctxOpen = false;
-      positionTriggerAndCtx();
+    if (e.key === "Escape"){
+      if (emojiOpen){ emojiOpen = false; positionTriggerAndMenus(); return; }
+      if (ctxOpen){ ctxOpen = false; positionTriggerAndMenus(); return; }
     }
   });
 
