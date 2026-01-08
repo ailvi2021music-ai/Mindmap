@@ -197,9 +197,10 @@
       -webkit-box-orient:vertical;
       word-break: break-word;
       cursor: default;
-      text-align: left;
+      text-align: center; /* default center */
       font-weight: 400;
       font-style: normal;
+      width:100%;
     }
 
     .node.editing{
@@ -218,7 +219,6 @@
       white-space: pre-wrap;
     }
 
-    /* Collapse dot */
     .collapseDot{
       position:absolute;
       width: 18px; height: 18px;
@@ -241,7 +241,6 @@
     }
     .collapseDot.collapsed .inner{ opacity: .70; }
 
-    /* Tiny "..." trigger (hover/selected) */
     .menuTrigger{
       position:fixed;
       z-index:95;
@@ -298,7 +297,6 @@
     .ctx .csep{ width:1px; height:22px; background: rgba(255,255,255,.12); margin:0 2px; }
     .ctx .label{ font-size:12px; color: rgba(255,255,255,.70); padding:0 6px 0 2px; }
 
-    /* Emoji picker */
     .emojiPop{
       position:fixed;
       z-index:97;
@@ -312,7 +310,36 @@
       box-shadow: var(--shadow);
       padding:10px;
       backdrop-filter: blur(10px);
+
+      /* keep scrollbar visually inside rounded corners */
+      overscroll-behavior: contain;
+      scrollbar-gutter: stable both-edges;
     }
+
+    /* Dark, integrated scrollbar */
+    .emojiPop::-webkit-scrollbar{
+      width: 10px;
+      height: 10px;
+    }
+    .emojiPop::-webkit-scrollbar-track{
+      background: rgba(255,255,255,.06);
+      border-radius: 12px;
+      margin: 8px;
+    }
+    .emojiPop::-webkit-scrollbar-thumb{
+      background: rgba(255,255,255,.18);
+      border-radius: 12px;
+      border: 2px solid rgba(20,28,40,.92);
+    }
+    .emojiPop::-webkit-scrollbar-thumb:hover{
+      background: rgba(255,255,255,.26);
+    }
+    /* Firefox */
+    .emojiPop{
+      scrollbar-color: rgba(255,255,255,.22) rgba(255,255,255,.06);
+      scrollbar-width: thin;
+    }
+
     .emojiGrid{
       display:grid;
       grid-template-columns: repeat(10, 1fr);
@@ -428,7 +455,9 @@
 
 <script>
 (() => {
-  const STORE_KEY = "mindmap_projects_v5";
+  const STORE_KEY = "mindmap_projects_v6";
+
+  const TRIGGER_HOLD_MS = 1600; // удержание кнопки после ухода курсора
 
   const PALETTE = [
     {name:"Sky",    fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.62)"},
@@ -439,7 +468,6 @@
     {name:"Slate",  fill:"rgba(255,255,255,.80)", stroke:"rgba(11,19,36,.18)"}
   ];
 
-  // Emoji list for picker (lightweight but useful)
   const EMOJIS = [
     "💡","✅","🎯","📌","🧠","⚡","🧩","🔥","📎","🔗","⭐","📝","📚","🧪","🐞","🧭",
     "🚀","🧱","🗂️","📈","📊","🧷","🧵","🧲","🧰","🪄","💎","🗝️","🧿","🧸","🫧","🌿",
@@ -486,7 +514,7 @@
     const raw = mctx.measureText(t).width;
     const minW = 150;
     const maxW = 360;
-    const w = Math.max(minW, Math.min(maxW, Math.ceil(raw + 48))); // icons removed => smaller padding
+    const w = Math.max(minW, Math.min(maxW, Math.ceil(raw + 48)));
     const h = 58;
     return {w,h};
   }
@@ -512,6 +540,13 @@
   let hoverNodeId = null;
   let hoverTrigger = false;
 
+  // Fixed owner while menu is open
+  let lockedOwnerId = null;
+
+  // Keep trigger visible briefly after leaving
+  let triggerHoldUntil = 0;
+  let holdTimer = null;
+
   function saveStore(){
     try{ localStorage.setItem(STORE_KEY, JSON.stringify(store)); }catch(e){}
   }
@@ -532,14 +567,16 @@
     data.links ||= [];
     data.nodes.forEach(n => {
       n.text ||= "Идея";
-      // Remove icon field if any old data exists
       if ("icon" in n) delete n.icon;
 
       n.style ||= { fill: PALETTE[0].fill, stroke: PALETTE[0].stroke };
       n.childColorNext ||= 0;
       n.parentId = n.parentId || null;
       n.collapsed = !!n.collapsed;
-      n.fmt ||= { bold:false, italic:false, align:"left" };
+
+      // default center unless already set
+      n.fmt ||= { bold:false, italic:false, align:"center" };
+      if (!n.fmt.align) n.fmt.align = "center";
 
       const m = measureNode(n.text);
       n.w = m.w; n.h = m.h;
@@ -561,7 +598,7 @@
       childColorNext:0,
       parentId:null,
       collapsed:false,
-      fmt:{bold:false, italic:false, align:"left"}
+      fmt:{bold:false, italic:false, align:"center"}
     });
 
     const p = { id, name, createdAt: nowTs(), updatedAt: nowTs(), data };
@@ -597,7 +634,7 @@
     selectedId = null;
     editingId = null;
     drag = null;
-    closeAllPopups();
+    closeAllPopups(true);
     saveStore();
     rebuildProjectSelect();
     renderAll();
@@ -645,10 +682,10 @@
       childColorNext: 0,
       parentId: null,
       collapsed: false,
-      fmt:{bold:false, italic:false, align:"left"}
+      fmt:{bold:false, italic:false, align:"center"} // default center
     });
     selectedId = id;
-    closeAllPopups();
+    closeAllPopups(false);
     autosave();
     renderAll();
     return id;
@@ -675,12 +712,12 @@
       childColorNext: 0,
       parentId: parentId,
       collapsed:false,
-      fmt:{bold:false, italic:false, align:"left"}
+      fmt:{bold:false, italic:false, align:"center"} // default center
     });
     addLink(parentId, id);
 
     selectedId = id;
-    closeAllPopups();
+    closeAllPopups(false);
     autosave();
     renderAll();
     return id;
@@ -704,12 +741,12 @@
       childColorNext: 0,
       parentId,
       collapsed:false,
-      fmt:{bold:false, italic:false, align:"left"}
+      fmt:{bold:false, italic:false, align:"center"} // default center
     });
     if (parentId) addLink(parentId, id);
 
     selectedId = id;
-    closeAllPopups();
+    closeAllPopups(false);
     autosave();
     renderAll();
     return id;
@@ -727,7 +764,7 @@
     map.nodes = map.nodes.filter(n => !ids.has(n.id));
     map.links = map.links.filter(l => !ids.has(l.a) && !ids.has(l.b));
     if (selectedId && ids.has(selectedId)) selectedId = null;
-    closeAllPopups();
+    closeAllPopups(true);
     autosave();
     renderAll();
   }
@@ -804,10 +841,18 @@
 
   function applyNodeFmt(nodeEl, n){
     const textEl = nodeEl.querySelector(".text");
-    const fmt = n.fmt || {bold:false, italic:false, align:"left"};
+    const fmt = n.fmt || {bold:false, italic:false, align:"center"};
     textEl.style.fontWeight = fmt.bold ? "700" : "400";
     textEl.style.fontStyle = fmt.italic ? "italic" : "normal";
-    textEl.style.textAlign = fmt.align || "left";
+    textEl.style.textAlign = fmt.align || "center";
+  }
+
+  function scheduleTriggerHold(){
+    triggerHoldUntil = Date.now() + TRIGGER_HOLD_MS;
+    clearTimeout(holdTimer);
+    holdTimer = setTimeout(() => {
+      positionTriggerAndMenus();
+    }, TRIGGER_HOLD_MS + 30);
   }
 
   function renderNodes(){
@@ -829,828 +874,21 @@
       const text = document.createElement("div");
       text.className = "text";
       text.textContent = n.text || "";
-
       div.appendChild(text);
+
       applyNodeFmt(div, n);
 
-      // Hover handling
       div.addEventListener("mouseenter", () => {
+        if (ctxOpen) return; // когда меню открыто — не меняем владельца от hover
         hoverNodeId = n.id;
         positionTriggerAndMenus();
       });
       div.addEventListener("mouseleave", () => {
+        if (ctxOpen) return;
         hoverNodeId = null;
-        setTimeout(() => {
-          // if user moved onto trigger, keep it
-          if (!hoverNodeId && !hoverTrigger && selectedId !== n.id){
-            positionTriggerAndMenus();
-          }
-        }, 0);
+        scheduleTriggerHold();
+        setTimeout(() => positionTriggerAndMenus(), 0);
       });
 
-      // Select node on click
       div.addEventListener("pointerdown", (e) => {
-        if (editingId) return;
-        e.preventDefault();
-        selectedId = n.id;
-        renderSelectionOnly();
-        // do not auto-open ctx
-        ctxOpen = false;
-        emojiOpen = false;
-        ctx.style.display = "none";
-        emojiPop.style.display = "none";
-        positionTriggerAndMenus();
-        updateCtxToggles();
-      });
-
-      // Drag move
-      div.addEventListener("pointerdown", (e) => {
-        if (editingId) return;
-        drag = {
-          kind: "node",
-          nodeId: n.id,
-          pointerId: e.pointerId,
-          sx: e.clientX, sy: e.clientY,
-          moved: false,
-          baseX: n.x, baseY: n.y
-        };
-        div.setPointerCapture(e.pointerId);
-      }, {passive:false});
-
-      div.addEventListener("pointermove", (e) => {
-        if (!drag || drag.kind !== "node" || drag.pointerId !== e.pointerId || drag.nodeId !== n.id) return;
-
-        const dx = e.clientX - drag.sx;
-        const dy = e.clientY - drag.sy;
-        const dist = Math.hypot(dx, dy);
-        if (!drag.moved && dist > DRAG_THRESHOLD) drag.moved = true;
-        if (!drag.moved) return;
-
-        const node = getNode(drag.nodeId);
-        if (!node) return;
-
-        node.x = drag.baseX + dx / map.view.k;
-        node.y = drag.baseY + dy / map.view.k;
-
-        div.style.left = node.x + "px";
-        div.style.top  = node.y + "px";
-
-        const dot = nodesLayer.querySelector(`.collapseDot[data-dot-for="${CSS.escape(node.id)}"]`);
-        if (dot){
-          dot.style.left = (node.x + node.w + 10) + "px";
-          dot.style.top  = (node.y + node.h/2 - 9) + "px";
-        }
-
-        drawLinks();
-        positionTriggerAndMenus();
-        autosave();
-      });
-
-      function endNodeDrag(e){
-        if (drag && drag.kind === "node" && drag.pointerId === e.pointerId){
-          drag = null;
-        }
-      }
-
-      // Double/Triple click
-      div.addEventListener("pointerup", (e) => {
-        const moved = !!(drag && drag.kind === "node" && drag.pointerId === e.pointerId && drag.moved);
-        endNodeDrag(e);
-        if (editingId) return;
-        if (moved) return;
-
-        const now = Date.now();
-        const same = (tap.id === n.id) && (now - tap.t <= TAP_WINDOW);
-        tap.id = n.id;
-        tap.t = now;
-        tap.count = same ? (tap.count + 1) : 1;
-
-        if (tap.timer) clearTimeout(tap.timer);
-        tap.timer = setTimeout(() => {
-          if (tap.id !== n.id) return;
-
-          if (tap.count === 2){
-            const childId = addChildFrom(n.id);
-            if (childId){
-              beginEdit(childId, true);
-            }
-          } else if (tap.count >= 3){
-            beginEdit(n.id, true);
-          }
-
-          tap.id = null; tap.count = 0; tap.timer = null;
-        }, TAP_WINDOW + 30);
-      });
-
-      div.addEventListener("pointercancel", endNodeDrag);
-      div.addEventListener("lostpointercapture", endNodeDrag);
-
-      nodesLayer.appendChild(div);
-
-      // Collapse dot
-      const kids = childrenOf(n.id);
-      if (kids.length){
-        const dot = document.createElement("div");
-        dot.className = "collapseDot" + (n.collapsed ? " collapsed" : "");
-        dot.setAttribute("data-dot-for", n.id);
-        dot.style.left = (n.x + n.w + 10) + "px";
-        dot.style.top  = (n.y + n.h/2 - 9) + "px";
-
-        const stroke = (n.style && n.style.stroke) ? n.style.stroke : "rgba(11,19,36,.22)";
-        dot.style.borderColor = stroke;
-
-        const inner = document.createElement("div");
-        inner.className = "inner";
-        inner.style.background = stroke;
-        dot.appendChild(inner);
-
-        dot.addEventListener("pointerdown", (e) => {
-          e.preventDefault();
-          toggleCollapse(n.id);
-        });
-
-        nodesLayer.appendChild(dot);
-      }
-    }
-  }
-
-  function renderAll(){
-    applyTransform();
-    drawLinks();
-    renderNodes();
-    positionTriggerAndMenus();
-    updateCtxToggles();
-  }
-
-  function closeAllPopups(){
-    ctxOpen = false;
-    emojiOpen = false;
-    ctx.style.display = "none";
-    emojiPop.style.display = "none";
-    menuTrigger.style.display = "none";
-  }
-
-  // Decide which node should show trigger: hover wins, else selected
-  function triggerOwner(){
-    if (hoverNodeId) return hoverNodeId;
-    return selectedId;
-  }
-
-  function positionTriggerAndMenus(){
-    const ownerId = triggerOwner();
-    if (!ownerId){ closeAllPopups(); return; }
-
-    const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(ownerId)}"]`);
-    const n = getNode(ownerId);
-    if (!nodeEl || !n || isHiddenByCollapse(ownerId)) { closeAllPopups(); return; }
-
-    const rect = nodeEl.getBoundingClientRect();
-    const headerRect = topbar.getBoundingClientRect();
-    const safeTop = headerRect.bottom + 6;
-
-    // Trigger: small circle under node center
-    const trigW = 18, trigH = 18, gap = 2;
-    let tx = rect.left + rect.width/2 - trigW/2;
-    let ty = rect.bottom + gap;
-
-    if (ty + trigH > window.innerHeight - 8){
-      ty = rect.top - trigH - gap;
-    }
-    ty = Math.max(safeTop, ty);
-    tx = Math.max(10, Math.min(window.innerWidth - trigW - 10, tx));
-
-    // Color per node (border color)
-    const stroke = (n.style && n.style.stroke) ? n.style.stroke : "rgba(11,19,36,.22)";
-    menuTrigger.style.borderColor = stroke;
-    menuTrigger.style.color = stroke;
-
-    menuTrigger.style.left = tx + "px";
-    menuTrigger.style.top  = ty + "px";
-    menuTrigger.style.display = "flex";
-
-    // If ctx is open, position it close to trigger
-    if (ctxOpen){
-      const ctxW = 520, ctxH = 52, gap2 = 6;
-      let cx = rect.left + rect.width/2 - ctxW/2;
-      cx = Math.max(12, Math.min(window.innerWidth - ctxW - 12, cx));
-
-      let cy = ty + trigH + gap2;
-      if (cy + ctxH > window.innerHeight - 8){
-        cy = ty - ctxH - gap2;
-      }
-      cy = Math.max(safeTop, cy);
-
-      ctx.style.left = cx + "px";
-      ctx.style.top  = cy + "px";
-      ctx.style.display = "flex";
-    } else {
-      ctx.style.display = "none";
-    }
-
-    // Emoji pop near ctx (or trigger if ctx closed)
-    if (emojiOpen){
-      const anchor = ctxOpen ? ctx.getBoundingClientRect() : menuTrigger.getBoundingClientRect();
-      const popW = 308, popH = 220, gap3 = 8;
-
-      let ex = anchor.left;
-      ex = Math.max(12, Math.min(window.innerWidth - popW - 12, ex));
-
-      let ey = anchor.bottom + gap3;
-      if (ey + popH > window.innerHeight - 8){
-        ey = anchor.top - popH - gap3;
-      }
-      ey = Math.max(safeTop, ey);
-
-      emojiPop.style.left = ex + "px";
-      emojiPop.style.top  = ey + "px";
-      emojiPop.style.display = "block";
-    } else {
-      emojiPop.style.display = "none";
-    }
-  }
-
-  // Trigger hover sticky
-  menuTrigger.addEventListener("mouseenter", () => { hoverTrigger = true; });
-  menuTrigger.addEventListener("mouseleave", () => {
-    hoverTrigger = false;
-    setTimeout(() => positionTriggerAndMenus(), 0);
-  });
-
-  // Open ctx by clicking trigger (owner becomes selected)
-  menuTrigger.addEventListener("pointerdown", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const ownerId = triggerOwner();
-    if (!ownerId) return;
-    selectedId = ownerId; // ensure selection follows
-    renderSelectionOnly();
-
-    ctxOpen = !ctxOpen;
-    if (!ctxOpen) emojiOpen = false;
-    positionTriggerAndMenus();
-    updateCtxToggles();
-  });
-
-  // Clicking outside closes popups
-  document.addEventListener("pointerdown", (e) => {
-    if (e.target.closest(".ctx") || e.target.closest(".menuTrigger") || e.target.closest(".emojiPop")) return;
-    if (ctxOpen || emojiOpen){
-      ctxOpen = false;
-      emojiOpen = false;
-      positionTriggerAndMenus();
-    }
-  });
-
-  function updateCtxToggles(){
-    const n = selectedId ? getNode(selectedId) : null;
-    if (!n) return;
-    n.fmt ||= {bold:false, italic:false, align:"left"};
-
-    document.getElementById("ctxBold").classList.toggle("on", !!n.fmt.bold);
-    document.getElementById("ctxItalic").classList.toggle("on", !!n.fmt.italic);
-
-    document.getElementById("ctxAlignL").classList.toggle("on", (n.fmt.align||"left")==="left");
-    document.getElementById("ctxAlignC").classList.toggle("on", (n.fmt.align||"left")==="center");
-    document.getElementById("ctxAlignR").classList.toggle("on", (n.fmt.align||"left")==="right");
-  }
-
-  // ===== Inline edit =====
-  function selectAllIn(el){
-    const range = document.createRange();
-    range.selectNodeContents(el);
-    const sel = window.getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-  }
-
-  function beginEdit(id, selectAll=false){
-    if (editingId) return;
-    const nodeEl = nodesLayer.querySelector(`.node[data-id="${CSS.escape(id)}"]`);
-    const n = getNode(id);
-    if (!nodeEl || !n) return;
-
-    drag = null;
-    editingId = id;
-
-    scene.classList.add("allowSelect");
-    nodeEl.classList.add("editing");
-
-    const textEl = nodeEl.querySelector(".text");
-    textEl.contentEditable = "true";
-    textEl.textContent = n.text || "";
-    textEl.focus();
-
-    if (selectAll) selectAllIn(textEl);
-
-    const finish = (saveChanges) => {
-      textEl.removeEventListener("keydown", onKey);
-      textEl.removeEventListener("blur", onBlur);
-
-      if (saveChanges){
-        const val = (textEl.textContent || "").trim();
-        n.text = val || "Идея";
-        const m = measureNode(n.text);
-        n.w = m.w; n.h = m.h;
-      } else {
-        textEl.textContent = n.text || "Идея";
-      }
-
-      textEl.contentEditable = "false";
-      nodeEl.classList.remove("editing");
-      editingId = null;
-
-      scene.classList.remove("allowSelect");
-      autosave();
-      renderAll();
-    };
-
-    const onKey = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a"){
-        e.preventDefault();
-        selectAllIn(textEl);
-        return;
-      }
-      if (e.key === "Enter"){ e.preventDefault(); textEl.blur(); }
-      if (e.key === "Escape"){ e.preventDefault(); finish(false); }
-      e.stopPropagation();
-    };
-
-    const onBlur = () => finish(true);
-
-    textEl.addEventListener("keydown", onKey);
-    textEl.addEventListener("blur", onBlur);
-  }
-
-  // Insert emoji to the beginning of text (with space)
-  function insertEmojiToNode(nodeId, emoji){
-    const n = getNode(nodeId);
-    if (!n) return;
-    const t = (n.text || "").trim();
-    n.text = t ? `${emoji} ${t}` : `${emoji}`;
-    const m = measureNode(n.text);
-    n.w = m.w; n.h = m.h;
-    autosave();
-    renderAll();
-  }
-
-  // ===== Context actions =====
-  document.getElementById("ctxChild").onclick = () => {
-    if (!selectedId) return;
-    const id = addChildFrom(selectedId);
-    if (id) beginEdit(id, true);
-  };
-  document.getElementById("ctxSibling").onclick = () => {
-    if (!selectedId) return;
-    const id = addSiblingFrom(selectedId);
-    if (id) beginEdit(id, true);
-  };
-  document.getElementById("ctxRename").onclick = () => { if (selectedId) beginEdit(selectedId, true); };
-
-  document.getElementById("ctxBold").onclick = () => {
-    const n = getNode(selectedId); if (!n) return;
-    n.fmt ||= {bold:false, italic:false, align:"left"};
-    n.fmt.bold = !n.fmt.bold;
-    autosave(); renderAll();
-  };
-  document.getElementById("ctxItalic").onclick = () => {
-    const n = getNode(selectedId); if (!n) return;
-    n.fmt ||= {bold:false, italic:false, align:"left"};
-    n.fmt.italic = !n.fmt.italic;
-    autosave(); renderAll();
-  };
-  document.getElementById("ctxAlignL").onclick = () => {
-    const n = getNode(selectedId); if (!n) return;
-    n.fmt ||= {bold:false, italic:false, align:"left"};
-    n.fmt.align = "left";
-    autosave(); renderAll();
-  };
-  document.getElementById("ctxAlignC").onclick = () => {
-    const n = getNode(selectedId); if (!n) return;
-    n.fmt ||= {bold:false, italic:false, align:"left"};
-    n.fmt.align = "center";
-    autosave(); renderAll();
-  };
-  document.getElementById("ctxAlignR").onclick = () => {
-    const n = getNode(selectedId); if (!n) return;
-    n.fmt ||= {bold:false, italic:false, align:"left"};
-    n.fmt.align = "right";
-    autosave(); renderAll();
-  };
-
-  document.getElementById("ctxColor").onclick = () => {
-    const n = getNode(selectedId); if (!n) return;
-    const i = PALETTE.findIndex(p => p.fill === n.style.fill && p.stroke === n.style.stroke);
-    const next = PALETTE[(Math.max(0,i)+1) % PALETTE.length];
-    n.style = {fill: next.fill, stroke: next.stroke};
-    autosave(); renderAll();
-  };
-
-  document.getElementById("ctxEmoji").onclick = () => {
-    if (!selectedId) return;
-    emojiOpen = !emojiOpen;
-    positionTriggerAndMenus();
-  };
-
-  document.getElementById("ctxCollapse").onclick = () => { if (selectedId) toggleCollapse(selectedId); };
-  document.getElementById("ctxDelete").onclick = () => { if (selectedId) deleteSubtree(selectedId); };
-  document.getElementById("ctxClose").onclick = () => {
-    ctxOpen = false;
-    emojiOpen = false;
-    positionTriggerAndMenus();
-  };
-
-  // Build emoji grid
-  function buildEmojiGrid(){
-    emojiGrid.innerHTML = "";
-    for (const em of EMOJIS){
-      const cell = document.createElement("div");
-      cell.className = "emojiCell";
-      cell.textContent = em;
-      cell.onclick = () => {
-        if (!selectedId) return;
-        insertEmojiToNode(selectedId, em);
-        emojiOpen = false;
-        positionTriggerAndMenus();
-      };
-      emojiGrid.appendChild(cell);
-    }
-  }
-  buildEmojiGrid();
-
-  // ===== Scene pan/zoom =====
-  scene.addEventListener("pointerdown", (e) => {
-    pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
-
-    const onUi = !!e.target.closest(".node") || !!e.target.closest(".collapseDot") || !!e.target.closest(".ctx") || !!e.target.closest(".menuTrigger") || !!e.target.closest(".emojiPop");
-    if (!onUi){
-      if (editingId){
-        const editor = nodesLayer.querySelector(`.node[data-id="${CSS.escape(editingId)}"] .text`);
-        if (editor) editor.blur();
-      }
-
-      if (tool === "node"){
-        const p = clientToWorld(e.clientX, e.clientY);
-        const id = addNodeAt(p.x - 90, p.y - 30, "Новая идея", PALETTE[0]);
-        beginEdit(id, true);
-        return;
-      }
-
-      // empty space deselect
-      selectedId = null;
-      hoverNodeId = null;
-      ctxOpen = false;
-      emojiOpen = false;
-      renderSelectionOnly();
-      closeAllPopups();
-
-      drag = {
-        kind:"pan",
-        pointerId:e.pointerId,
-        sx:e.clientX, sy:e.clientY,
-        moved:false,
-        startViewX: map.view.x,
-        startViewY: map.view.y
-      };
-      scene.setPointerCapture(e.pointerId);
-    }
-
-    if (pointers.size === 2){
-      const pts = [...pointers.values()];
-      pinch = {
-        dist0: Math.hypot(pts[1].x-pts[0].x, pts[1].y-pts[0].y),
-        k0: map.view.k
-      };
-    }
-  });
-
-  scene.addEventListener("pointermove", (e) => {
-    if (pointers.has(e.pointerId)) pointers.set(e.pointerId, {x:e.clientX, y:e.clientY});
-
-    if (pointers.size === 2 && pinch){
-      const pts = [...pointers.values()];
-      const dist = Math.hypot(pts[1].x-pts[0].x, pts[1].y-pts[0].y);
-      const scale = dist / Math.max(1, pinch.dist0);
-      const nk = Math.max(0.25, Math.min(3.2, pinch.k0 * scale));
-
-      const mid = {x:(pts[0].x+pts[1].x)/2, y:(pts[0].y+pts[1].y)/2};
-      const before = clientToWorld(mid.x, mid.y);
-
-      map.view.k = nk;
-      const r = scene.getBoundingClientRect();
-      const vx = mid.x - r.left;
-      const vy = mid.y - r.top;
-      map.view.x = vx - before.x * nk;
-      map.view.y = vy - before.y * nk;
-
-      applyTransform();
-      positionTriggerAndMenus();
-      autosave();
-      return;
-    }
-
-    if (!drag || drag.pointerId !== e.pointerId) return;
-    if (drag.kind !== "pan") return;
-
-    const dx = e.clientX - drag.sx;
-    const dy = e.clientY - drag.sy;
-    const dist = Math.hypot(dx, dy);
-    if (!drag.moved && dist > DRAG_THRESHOLD) drag.moved = true;
-    if (!drag.moved) return;
-
-    map.view.x = drag.startViewX + dx;
-    map.view.y = drag.startViewY + dy;
-    applyTransform();
-    positionTriggerAndMenus();
-    autosave();
-  });
-
-  scene.addEventListener("pointerup", (e) => {
-    pointers.delete(e.pointerId);
-    if (pointers.size < 2) pinch = null;
-    if (drag && drag.kind === "pan" && drag.pointerId === e.pointerId) drag = null;
-  });
-  scene.addEventListener("pointercancel", (e) => {
-    pointers.delete(e.pointerId);
-    if (drag && drag.pointerId === e.pointerId) drag = null;
-  });
-
-  wrap.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    const delta = Math.sign(e.deltaY);
-    const factor = delta > 0 ? 0.92 : 1.08;
-
-    const before = clientToWorld(e.clientX, e.clientY);
-    const nk = Math.max(0.25, Math.min(3.2, map.view.k * factor));
-
-    const r = scene.getBoundingClientRect();
-    const vx = e.clientX - r.left;
-    const vy = e.clientY - r.top;
-
-    map.view.k = nk;
-    map.view.x = vx - before.x * nk;
-    map.view.y = vy - before.y * nk;
-
-    applyTransform();
-    positionTriggerAndMenus();
-    autosave();
-  }, {passive:false});
-
-  scene.addEventListener("dblclick", (e) => {
-    if (e.target.closest(".node") || e.target.closest(".collapseDot") || e.target.closest(".ctx") || e.target.closest(".menuTrigger") || e.target.closest(".emojiPop")) return;
-    const p = clientToWorld(e.clientX, e.clientY);
-    const id = addNodeAt(p.x - 90, p.y - 30, "Новая идея", PALETTE[0]);
-    beginEdit(id, true);
-  });
-
-  // Tools
-  function setTool(t){
-    tool = t;
-    document.querySelectorAll(".toolbtn").forEach(b => b.classList.toggle("active", b.dataset.tool === t));
-    if (t === "center") centerOnSelection();
-  }
-  document.getElementById("leftbar").addEventListener("click", (e) => {
-    const btn = e.target.closest(".toolbtn");
-    if (!btn) return;
-    setTool(btn.dataset.tool);
-  });
-
-  function centerOnSelection(){
-    if (!selectedId){ showToast("Выбери узел"); setTool("select"); return; }
-    const n = getNode(selectedId); if (!n) return;
-    const r = scene.getBoundingClientRect();
-    const cx = r.width/2, cy = r.height/2;
-    map.view.x = cx - (n.x + n.w/2) * map.view.k;
-    map.view.y = cy - (n.y + n.h/2) * map.view.k;
-    applyTransform();
-    positionTriggerAndMenus();
-    autosave();
-    setTool("select");
-  }
-
-  // Header actions
-  projectSelect.addEventListener("change", () => setActiveProject(projectSelect.value));
-
-  document.getElementById("projNew").onclick = () => {
-    const name = prompt("Название нового майндмэпа:", "Новый майндмэп");
-    const p = createEmptyProject((name || "Новый майндмэп").trim());
-    rebuildProjectSelect();
-    setActiveProject(p.id);
-    showToast("Создано");
-  };
-
-  document.getElementById("projRename").onclick = () => {
-    if (!active) return;
-    const name = prompt("Новое название:", active.name || "Майндмэп");
-    if (!name) return;
-    active.name = name.trim();
-    active.updatedAt = nowTs();
-    saveStore();
-    rebuildProjectSelect();
-    showToast("Переименовано");
-  };
-
-  document.getElementById("projDup").onclick = () => {
-    if (!active) return;
-    commitMap();
-    const name = prompt("Название копии:", (active.name || "Майндмэп") + " (копия)");
-    const id = uid();
-    const clone = {
-      id,
-      name: (name || "Копия").trim(),
-      createdAt: nowTs(),
-      updatedAt: nowTs(),
-      data: JSON.parse(JSON.stringify(store.projects[store.activeId].data))
-    };
-    store.projects[id] = clone;
-    store.activeId = id;
-    saveStore();
-    rebuildProjectSelect();
-    setActiveProject(id);
-    showToast("Дубликат создан");
-  };
-
-  document.getElementById("projDel").onclick = () => {
-    if (!active) return;
-    if (!confirm(`Удалить "${active.name}"?`)) return;
-    delete store.projects[active.id];
-    const ids = Object.keys(store.projects);
-    if (!ids.length){
-      createEmptyProject("Мой первый майндмэп");
-    } else {
-      store.activeId = ids[0];
-    }
-    saveStore();
-    rebuildProjectSelect();
-    setActiveProject(store.activeId);
-    showToast("Удалено");
-  };
-
-  document.getElementById("autoLayout").onclick = () => {
-    if (!map.nodes.length){ showToast("Нет узлов"); return; }
-    const root = map.nodes.find(n => !n.parentId) || map.nodes[0];
-    const r = scene.getBoundingClientRect();
-    const center = clientToWorld(r.left + r.width/2, r.top + r.height/2);
-
-    root.x = center.x - root.w/2;
-    root.y = center.y - root.h/2;
-
-    const kids = childrenOf(root.id).map(getNode).filter(Boolean);
-    let y = root.y - (kids.length * 76)/2;
-    for (const k of kids){
-      k.x = root.x + root.w + 160;
-      k.y = y;
-      y += 76;
-    }
-    autosave();
-    renderAll();
-    showToast("Готово");
-  };
-
-  document.getElementById("resetView").onclick = () => {
-    map.view = {x:24,y:24,k:1};
-    applyTransform();
-    positionTriggerAndMenus();
-    autosave();
-    showToast("Сброшено");
-  };
-
-  // Export/Import
-  document.getElementById("exportOne").onclick = () => {
-    if (!active) return;
-    commitMap();
-    const payload = { kind:"mindmap_project", version:5, project: store.projects[store.activeId] };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    const safe = (active.name || "mindmap").replace(/[^\w\d\-_.]+/g,"_");
-    a.download = safe + ".json";
-    a.click();
-    URL.revokeObjectURL(a.href);
-    showToast("Экспортировано");
-  };
-
-  importOne.addEventListener("change", (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    const fr = new FileReader();
-    fr.onload = () => {
-      try{
-        const obj = JSON.parse(fr.result);
-        if (!obj || obj.kind !== "mindmap_project" || !obj.project) throw new Error("bad");
-        const p = obj.project;
-        if (!p.id) p.id = uid();
-        p.data = normalizeMapData(p.data || {});
-        p.createdAt ||= nowTs();
-        p.updatedAt ||= nowTs();
-        store.projects[p.id] = p;
-        store.activeId = p.id;
-        saveStore();
-        rebuildProjectSelect();
-        setActiveProject(p.id);
-        showToast("Импортировано");
-      }catch(err){
-        showToast("Ошибка импорта");
-      }
-    };
-    fr.readAsText(f);
-    e.target.value = "";
-  });
-
-  document.getElementById("exportAll").onclick = () => {
-    commitMap();
-    const payload = { kind:"mindmap_store", version:5, store };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "mindmaps_all.json";
-    a.click();
-    URL.revokeObjectURL(a.href);
-    showToast("Экспорт всех готов");
-  };
-
-  importAll.addEventListener("change", (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) return;
-    const fr = new FileReader();
-    fr.onload = () => {
-      try{
-        const obj = JSON.parse(fr.result);
-        if (!obj || obj.kind !== "mindmap_store" || !obj.store) throw new Error("bad");
-        const s = obj.store;
-        if (!s.projects || typeof s.projects !== "object") throw new Error("bad");
-        Object.values(s.projects).forEach(p => {
-          if (!p.id) p.id = uid();
-          p.name ||= "Майндмэп";
-          p.createdAt ||= nowTs();
-          p.updatedAt ||= nowTs();
-          p.data = normalizeMapData(p.data || {});
-        });
-        store = s;
-        if (!store.activeId || !store.projects[store.activeId]){
-          store.activeId = Object.keys(store.projects)[0];
-        }
-        saveStore();
-        rebuildProjectSelect();
-        setActiveProject(store.activeId);
-        showToast("Импорт выполнен");
-      }catch(err){
-        showToast("Ошибка импорта");
-      }
-    };
-    fr.readAsText(f);
-    e.target.value = "";
-  });
-
-  // Shortcuts
-  window.addEventListener("keydown", (e) => {
-    const k = e.key.toLowerCase();
-    if (k === "v") setTool("select");
-    if (k === "h") setTool("hand");
-    if (k === "n") setTool("node");
-    if (k === "c") setTool("center");
-
-    if (e.key === "Tab" && selectedId && !editingId){
-      e.preventDefault();
-      const id = addChildFrom(selectedId);
-      if (id) beginEdit(id, true);
-    }
-    if (e.key === "Enter" && selectedId && !editingId){
-      e.preventDefault();
-      const id = addSiblingFrom(selectedId);
-      if (id) beginEdit(id, true);
-    }
-    if ((e.key === "Delete" || e.key === "Backspace") && selectedId && !editingId){
-      e.preventDefault(); deleteSubtree(selectedId);
-    }
-
-    if (e.key === "Escape"){
-      if (emojiOpen){ emojiOpen = false; positionTriggerAndMenus(); return; }
-      if (ctxOpen){ ctxOpen = false; positionTriggerAndMenus(); return; }
-    }
-  });
-
-  // ===== Init =====
-  function init(){
-    store = loadStore();
-    if (!store){
-      store = { activeId:null, projects:{} };
-      createEmptyProject("Мой первый майндмэп");
-    } else {
-      if (!store.projects || Object.keys(store.projects).length === 0){
-        store.projects = {};
-        createEmptyProject("Мой первый майндмэп");
-      }
-      if (!store.activeId || !store.projects[store.activeId]){
-        store.activeId = Object.keys(store.projects)[0];
-      }
-    }
-    saveStore();
-    rebuildProjectSelect();
-    setActiveProject(store.activeId);
-  }
-
-  init();
-})();
-</script>
-</body>
-</html>
+        if (editingId) return
