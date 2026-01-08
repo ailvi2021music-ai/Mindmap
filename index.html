@@ -133,7 +133,6 @@
       position:relative;
       overflow:hidden;
 
-      /* ВАЖНО: не даём Яндексу думать, что тут можно выделять текст */
       user-select:none;
       -webkit-user-select:none;
       -ms-user-select:none;
@@ -176,6 +175,7 @@
     }
     .toast.show{ opacity:1; }
 
+    /* Inline editor */
     #editor{
       position:absolute;
       z-index: 300;
@@ -189,6 +189,64 @@
       outline:none;
       background: rgba(255,255,255,.95);
       color: var(--text);
+
+      /* Важно: чтобы выделение мышкой работало */
+      user-select:text;
+      -webkit-user-select:text;
+    }
+
+    /* HTML overlay button (⋯) + menu */
+    .nodeBtn{
+      position:absolute;
+      z-index: 220;
+      width:24px;
+      height:24px;
+      border-radius:999px;
+      border:1px solid rgba(11,19,36,.18);
+      background: rgba(255,255,255,.92);
+      box-shadow: 0 10px 20px rgba(10,20,40,.14);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      padding:0;
+    }
+    .nodeBtnDots{
+      width:3px;height:3px;border-radius:50%;
+      background: rgba(11,19,36,.78);
+      box-shadow: 0 -5px 0 rgba(11,19,36,.78), 0 5px 0 rgba(11,19,36,.78);
+      transform: translateY(-.5px); /* визуально центр */
+    }
+
+    .nodeMenu{
+      position:absolute;
+      z-index: 221;
+      display:none;
+      gap:8px;
+      align-items:center;
+      padding:8px;
+      border-radius: 14px;
+      background: rgba(20,28,40,.92);
+      border: 1px solid rgba(255,255,255,.10);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+    .nodeMenu .mBtn{
+      width:34px; height:34px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.06);
+      color: rgba(255,255,255,.92);
+      display:flex; align-items:center; justify-content:center;
+      cursor:pointer;
+      user-select:none;
+      font-weight:800;
+      font-size:16px;
+      line-height:1;
+    }
+    .nodeMenu .mBtn:hover{
+      border-color: rgba(89,195,255,.35);
+      background: rgba(255,255,255,.10);
     }
   </style>
 </head>
@@ -221,14 +279,20 @@
   </header>
 
   <div class="stageWrap" id="wrap">
-    <svg id="svg" xmlns="http://www.w3.org/2000/svg">
-      <g id="world">
-        <g id="links"></g>
-        <g id="nodes"></g>
-        <g id="dots" style="display:none; cursor:pointer;"></g>
-        <g id="ctx" style="display:none;"></g>
-      </g>
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg" aria-label="Mindmap canvas">
+      <g id="links"></g>
+      <g id="nodes"></g>
     </svg>
+
+    <!-- HTML overlays -->
+    <button class="nodeBtn" id="nodeBtn" title="Меню узла"><span class="nodeBtnDots"></span></button>
+    <div class="nodeMenu" id="nodeMenu" role="menu" aria-label="Node menu">
+      <div class="mBtn" data-act="child" title="Дочерняя идея">↳</div>
+      <div class="mBtn" data-act="edit" title="Переименовать">✎</div>
+      <div class="mBtn" data-act="collapse" title="Свернуть/развернуть">○</div>
+      <div class="mBtn" data-act="delete" title="Удалить ветку">⌫</div>
+      <div class="mBtn" data-act="close" title="Закрыть">×</div>
+    </div>
 
     <textarea id="editor" rows="2"></textarea>
     <div class="toast" id="toast"></div>
@@ -237,7 +301,7 @@
 
 <script>
 (() => {
-  const STORE_KEY = "mindmap_projects_v9_svg_safe";
+  const STORE_KEY = "mindmap_projects_v10_viewbox";
 
   const PALETTE = [
     {fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.62)"},
@@ -249,14 +313,14 @@
   ];
 
   const svg = document.getElementById("svg");
-  const world = document.getElementById("world");
   const linksG = document.getElementById("links");
   const nodesG = document.getElementById("nodes");
-  const dotsG = document.getElementById("dots");
-  const ctxG  = document.getElementById("ctx");
   const wrap = document.getElementById("wrap");
   const toast = document.getElementById("toast");
   const editor = document.getElementById("editor");
+
+  const nodeBtn = document.getElementById("nodeBtn");
+  const nodeMenu = document.getElementById("nodeMenu");
 
   const projBtn = document.getElementById("projBtn");
   const projBtnText = document.getElementById("projBtnText");
@@ -281,14 +345,10 @@
   }
 
   // показываем ошибку вместо "белого экрана"
-  window.addEventListener("error", (e) => {
-    showToast("Ошибка: " + (e.message || e.error || "unknown"));
-  });
-  window.addEventListener("unhandledrejection", (e) => {
-    showToast("Ошибка: " + (e.reason?.message || e.reason || "promise rejection"));
-  });
+  window.addEventListener("error", (e) => showToast("Ошибка: " + (e.message || e.error || "unknown")));
+  window.addEventListener("unhandledrejection", (e) => showToast("Ошибка: " + (e.reason?.message || e.reason || "promise rejection")));
 
-  // ---------- SVG-safe helpers (важно для Яндекса) ----------
+  // ---------- SVG-safe helpers ----------
   function safeMatches(el, selector){
     if (!el) return false;
     const fn = el.matches || el.msMatchesSelector || el.webkitMatchesSelector;
@@ -318,14 +378,16 @@
     return null;
   }
 
+  // Камера теперь в WORLD-координатах: x,y = левый верх viewBox, k = zoom
+  // (чем больше k — тем ближе)
   function createEmptyProject(name="Новый майндмэп"){
     const id = uid();
     const centerId = uid();
     const data = {
-      view:{x: 140, y: 110, k: 1},
+      cam:{x: 0, y: 0, k: 1},
       nodes: [{
         id:centerId,
-        x: 240, y: 180,
+        x: 360, y: 240,
         text:"Центральная идея",
         style:{...PALETTE[0]},
         parentId:null,
@@ -342,7 +404,6 @@
     return p;
   }
 
-  // стартуем максимально устойчиво
   let store = loadStore();
   if (!store || !store.projects || typeof store.projects !== "object"){
     store = { activeId:null, projects:{} };
@@ -357,9 +418,15 @@
 
   let active = null;
   let map = null;
+
   let selectedId = null;
   let editingId = null;
-  let ctxOpen = false;
+
+  // drag state
+  let drag = null;
+
+  // overlay state
+  let menuOpen = false;
 
   function commitMap(){
     if (!active || !map) return;
@@ -385,21 +452,41 @@
     URL.revokeObjectURL(a.href);
   }
 
-  // ---------- geometry ----------
-  function applyTransform(){
-    const v = map.view;
-    world.setAttribute("transform", `translate(${v.x} ${v.y}) scale(${v.k})`);
+  // ---------- Camera / viewBox ----------
+  function stageSize(){
+    const r = svg.getBoundingClientRect();
+    return {w: r.width || 1, h: r.height || 1, left:r.left, top:r.top};
   }
+
+  function applyViewBox(){
+    const {w,h} = stageSize();
+    const cam = map.cam;
+
+    // ширина/высота viewBox уменьшаются при zoom-in
+    const vw = w / cam.k;
+    const vh = h / cam.k;
+
+    svg.setAttribute("viewBox", `${cam.x} ${cam.y} ${vw} ${vh}`);
+  }
+
   function clientToWorld(cx, cy){
     const r = svg.getBoundingClientRect();
-    const v = map.view;
-    return { x: (cx - r.left - v.x) / v.k, y: (cy - r.top - v.y) / v.k };
+    const cam = map.cam;
+    return {
+      x: cam.x + (cx - r.left) / cam.k,
+      y: cam.y + (cy - r.top) / cam.k
+    };
   }
   function worldToClient(wx, wy){
     const r = svg.getBoundingClientRect();
-    const v = map.view;
-    return { x: r.left + v.x + wx * v.k, y: r.top + v.y + wy * v.k };
+    const cam = map.cam;
+    return {
+      x: r.left + (wx - cam.x) * cam.k,
+      y: r.top + (wy - cam.y) * cam.k
+    };
   }
+
+  // ---------- Graph helpers ----------
   function getNode(id){ return map.nodes.find(n => n.id === id); }
   function childrenOf(id){ return map.nodes.filter(n => n.parentId === id).map(n => n.id); }
   function isHiddenByCollapse(nodeId){
@@ -427,6 +514,7 @@
     svg.removeChild(t);
     return w;
   }
+
   function nodeBox(n){
     const padX = 22;
     const minW = 170;
@@ -446,18 +534,30 @@
     map.links.push({ id: uid(), a, b });
   }
 
-  function addChildFrom(parentId){
+  function addChildFrom(parentId, preferPoint=null){
     const p = getNode(parentId);
     if (!p) return null;
+
     const idx = ((p.childColorNext||0) + 1) % PALETTE.length;
     p.childColorNext = (p.childColorNext||0) + 1;
     const style = PALETTE[idx];
 
+    // позиция: по умолчанию справа; если кликнули в точку — уводим ближе к ней
+    let x = p.x + 260;
+    let y = p.y + (Math.random()*80 - 40);
+    if (preferPoint){
+      // тянем в сторону клика, но ограничиваем
+      const dx = Math.max(140, Math.min(360, preferPoint.x - p.x));
+      const dy = Math.max(-220, Math.min(220, preferPoint.y - p.y));
+      x = p.x + dx;
+      y = p.y + dy;
+    }
+
     const id = uid();
     map.nodes.push({
       id,
-      x: p.x + 260,
-      y: p.y + (Math.random()*80 - 40),
+      x,
+      y,
       text:"Дочерняя идея",
       style:{...style},
       parentId: parentId,
@@ -465,9 +565,10 @@
       childColorNext:0,
       fmt:{bold:false, italic:false, align:"center"}
     });
+
     addLink(parentId, id);
     selectedId = id;
-    ctxOpen = false;
+    menuOpen = false;
     autosave();
     renderAll();
     beginEdit(id, true);
@@ -485,7 +586,7 @@
     map.nodes = map.nodes.filter(n => !ids.has(n.id));
     map.links = map.links.filter(l => !ids.has(l.a) && !ids.has(l.b));
     if (selectedId && ids.has(selectedId)) selectedId = null;
-    ctxOpen = false;
+    menuOpen = false;
     autosave();
     renderAll();
   }
@@ -514,8 +615,10 @@
     return { x: cx + dx*t, y: cy + dy*t };
   }
 
+  // ---------- Render ----------
   function renderLinks(){
     clear(linksG);
+
     for (const l of map.links){
       const a = getNode(l.a), b = getNode(l.b);
       if (!a || !b) continue;
@@ -534,6 +637,8 @@
       path.setAttribute("stroke","rgba(30,90,150,.45)");
       path.setAttribute("stroke-width","3");
       path.setAttribute("stroke-linecap","round");
+      // важно: stroke не "жирнеет" при зуме
+      path.setAttribute("vector-effect","non-scaling-stroke");
       linksG.appendChild(path);
     }
   }
@@ -559,6 +664,7 @@
       rect.setAttribute("stroke", n.style?.stroke || "rgba(11,19,36,.18)");
       rect.setAttribute("stroke-width", (selectedId===n.id) ? "3" : "2");
       rect.setAttribute("filter", "drop-shadow(0px 10px 16px rgba(10,20,40,.14))");
+      rect.setAttribute("vector-effect","non-scaling-stroke");
       g.appendChild(rect);
 
       const text = document.createElementNS("http://www.w3.org/2000/svg","text");
@@ -582,17 +688,18 @@
         text.setAttribute("text-anchor","middle");
         text.setAttribute("x", w/2);
       }
-
       g.appendChild(text);
 
+      // select
       g.addEventListener("pointerdown", (e) => {
         if (editingId) return;
         e.stopPropagation();
         selectedId = n.id;
-        ctxOpen = false;
-        renderAll();
+        menuOpen = false;
+        renderAll(); // обновит кнопку ⋯ позицию
       });
 
+      // drag start
       g.addEventListener("pointerdown", (e) => {
         if (editingId) return;
         e.stopPropagation();
@@ -603,10 +710,11 @@
 
       nodesG.appendChild(g);
 
+      // collapse indicator (кружок — заполненный/пустой)
       const kids = childrenOf(n.id);
       if (kids.length){
         const dot = document.createElementNS("http://www.w3.org/2000/svg","g");
-        dot.setAttribute("data-dot-for", n.id);
+        dot.setAttribute("data-collapse-for", n.id);
         dot.setAttribute("transform", `translate(${n.x + w + 12} ${n.y + h/2 - 10})`);
         dot.style.cursor = "pointer";
 
@@ -617,6 +725,7 @@
         c.setAttribute("fill","rgba(255,255,255,.92)");
         c.setAttribute("stroke", n.style?.stroke || "rgba(11,19,36,.22)");
         c.setAttribute("stroke-width","2");
+        c.setAttribute("vector-effect","non-scaling-stroke");
         dot.appendChild(c);
 
         const inner = document.createElementNS("http://www.w3.org/2000/svg","circle");
@@ -624,7 +733,7 @@
         inner.setAttribute("cy", 10);
         inner.setAttribute("r", 6);
         inner.setAttribute("fill", n.style?.stroke || "rgba(11,19,36,.22)");
-        inner.setAttribute("opacity", n.collapsed ? "0.75" : "0.28");
+        inner.setAttribute("opacity", n.collapsed ? "0.75" : "0.22");
         dot.appendChild(inner);
 
         dot.addEventListener("pointerdown", (e) => {
@@ -637,115 +746,65 @@
     }
   }
 
-  function renderDotsAndCtx(){
-    clear(dotsG);
-    clear(ctxG);
-
-    if (!selectedId) { dotsG.style.display="none"; ctxG.style.display="none"; return; }
-    const n = getNode(selectedId);
-    if (!n || isHiddenByCollapse(selectedId)) { dotsG.style.display="none"; ctxG.style.display="none"; return; }
-
-    const {w,h} = nodeBox(n);
-    const dotX = n.x + w/2;
-    const dotY = n.y + h + 14;
-
-    const bg = document.createElementNS("http://www.w3.org/2000/svg","circle");
-    bg.setAttribute("cx", dotX);
-    bg.setAttribute("cy", dotY);
-    bg.setAttribute("r", 11);
-    bg.setAttribute("fill", "rgba(255,255,255,.92)");
-    bg.setAttribute("stroke", n.style?.stroke || "rgba(11,19,36,.22)");
-    bg.setAttribute("stroke-width", "2");
-    dotsG.appendChild(bg);
-
-    const dColor = n.style?.stroke || "rgba(11,19,36,.75)";
-    [-4,0,4].forEach(dx => {
-      const dc = document.createElementNS("http://www.w3.org/2000/svg","circle");
-      dc.setAttribute("cx", dotX + dx);
-      dc.setAttribute("cy", dotY);
-      dc.setAttribute("r", 1.6);
-      dc.setAttribute("fill", dColor);
-      dotsG.appendChild(dc);
-    });
-
-    dotsG.style.display = "block";
-    dotsG.onpointerdown = (e) => {
-      e.stopPropagation();
-      ctxOpen = !ctxOpen;
-      renderAll();
-    };
-
-    if (!ctxOpen){ ctxG.style.display="none"; return; }
-
-    const boxW = 420;
-    const boxH = 54;
-    const boxX = Math.max(10, dotX - boxW/2);
-    const boxY = dotY + 16;
-
-    const rect = document.createElementNS("http://www.w3.org/2000/svg","rect");
-    rect.setAttribute("x", boxX);
-    rect.setAttribute("y", boxY);
-    rect.setAttribute("width", boxW);
-    rect.setAttribute("height", boxH);
-    rect.setAttribute("rx", 14);
-    rect.setAttribute("fill", "rgba(20,28,40,.92)");
-    rect.setAttribute("stroke", "rgba(255,255,255,.10)");
-    rect.setAttribute("stroke-width","1");
-    rect.setAttribute("filter", "drop-shadow(0px 18px 30px rgba(10,20,40,.18))");
-    ctxG.appendChild(rect);
-
-    const items = [
-      {label:"↳", action:()=>addChildFrom(selectedId)},
-      {label:"✏️", action:()=>beginEdit(selectedId,true)},
-      {label:"⤵️", action:()=>toggleCollapse(selectedId)},
-      {label:"🗑️", action:()=>deleteSubtree(selectedId)},
-      {label:"✖", action:()=>{ctxOpen=false; renderAll();}}
-    ];
-
-    const startX = boxX + 14;
-    const startY = boxY + 10;
-    const gap = 8;
-    const btn = 34;
-
-    items.forEach((it, i) => {
-      const x = startX + i*(btn+gap);
-      const y = startY;
-
-      const b = document.createElementNS("http://www.w3.org/2000/svg","rect");
-      b.setAttribute("x", x);
-      b.setAttribute("y", y);
-      b.setAttribute("width", btn);
-      b.setAttribute("height", btn);
-      b.setAttribute("rx", 10);
-      b.setAttribute("fill", "rgba(255,255,255,.06)");
-      b.setAttribute("stroke", "rgba(255,255,255,.10)");
-      b.setAttribute("stroke-width","1");
-      b.style.cursor = "pointer";
-      b.onpointerdown = (e) => { e.stopPropagation(); it.action(); };
-      ctxG.appendChild(b);
-
-      const t = document.createElementNS("http://www.w3.org/2000/svg","text");
-      t.setAttribute("x", x + btn/2);
-      t.setAttribute("y", y + btn/2 + 1);
-      t.setAttribute("text-anchor","middle");
-      t.setAttribute("dominant-baseline","middle");
-      t.style.fontFamily = "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
-      t.style.fontWeight = "700";
-      t.style.fontSize = "16px";
-      t.style.fill = "rgba(255,255,255,.92)";
-      t.textContent = it.label;
-      t.style.pointerEvents = "none";
-      ctxG.appendChild(t);
-    });
-
-    ctxG.style.display = "block";
+  // ---------- HTML overlay positioning ----------
+  function hideOverlays(){
+    nodeBtn.style.display = "none";
+    nodeMenu.style.display = "none";
+    menuOpen = false;
   }
 
+  function positionNodeBtn(){
+    if (!selectedId) { hideOverlays(); return; }
+    const n = getNode(selectedId);
+    if (!n || isHiddenByCollapse(selectedId)) { hideOverlays(); return; }
+
+    const {w,h} = nodeBox(n);
+    const p = worldToClient(n.x + w/2, n.y + h); // низ по центру
+    const s = stageSize();
+
+    // кнопка чуть ниже узла (буквально “полсантиметра”)
+    const left = p.x - 12;
+    const top  = p.y + 6;
+
+    // clamp в пределах wrap
+    const cl = Math.max(s.left + 8, Math.min(s.left + s.w - 32, left));
+    const ct = Math.max(s.top + 8, Math.min(s.top + s.h - 32, top));
+
+    nodeBtn.style.left = (cl - s.left) + "px";
+    nodeBtn.style.top  = (ct - s.top) + "px";
+    nodeBtn.style.display = "flex";
+  }
+
+  function positionNodeMenu(){
+    if (!menuOpen || !selectedId) { nodeMenu.style.display="none"; return; }
+    const n = getNode(selectedId);
+    if (!n) { nodeMenu.style.display="none"; return; }
+
+    const {w,h} = nodeBox(n);
+    const s = stageSize();
+    const p = worldToClient(n.x + w/2, n.y + h);
+
+    nodeMenu.style.display = "flex";
+
+    // меню всегда ниже кнопки ⋯
+    const menuW = 8 + (5 * (34 + 8)); // приблизительно
+    const left = (p.x - menuW/2);
+    const top  = (p.y + 40);
+
+    const cl = Math.max(s.left + 8, Math.min(s.left + s.w - menuW - 8, left));
+    const ct = Math.max(s.top + 8, Math.min(s.top + s.h - 70, top));
+
+    nodeMenu.style.left = (cl - s.left) + "px";
+    nodeMenu.style.top  = (ct - s.top) + "px";
+  }
+
+  // ---------- Render all ----------
   function renderAll(){
-    applyTransform();
+    applyViewBox();
     renderLinks();
     renderNodes();
-    renderDotsAndCtx();
+    positionNodeBtn();
+    positionNodeMenu();
   }
 
   // ---------- Editor ----------
@@ -754,23 +813,30 @@
     if (!n) return;
 
     editingId = id;
-    ctxOpen = false;
+    menuOpen = false;
     renderAll();
 
-    const {w,h} = nodeBox(n);
+    const {w,h,fontSize,weight} = nodeBox(n);
     const p = worldToClient(n.x, n.y);
-    const k = map.view.k;
 
-    editor.style.left = (p.x) + "px";
-    editor.style.top  = (p.y) + "px";
-    editor.style.width = (w * k) + "px";
-    editor.style.height = (h * k) + "px";
-    editor.style.fontSize = Math.max(14, Math.round(20 * k)) + "px";
-    editor.style.textAlign = "center";
+    // редактор в пикселях (чётко, удобно)
+    const cam = map.cam;
+    const k = cam.k;
+
+    editor.style.left = (p.x - stageSize().left) + "px";
+    editor.style.top  = (p.y - stageSize().top) + "px";
+    editor.style.width = Math.max(120, Math.round(w * k)) + "px";
+    editor.style.height = Math.max(44, Math.round(h * k)) + "px";
+    editor.style.fontSize = Math.max(14, Math.round(fontSize * k)) + "px";
+    editor.style.fontWeight = String(weight);
+    editor.style.fontStyle = (n.fmt && n.fmt.italic) ? "italic" : "normal";
+    editor.style.textAlign = (n.fmt && n.fmt.align) ? n.fmt.align : "center";
 
     editor.value = (n.text || "").trim() || "Идея";
     editor.style.display = "block";
     editor.focus();
+
+    // важно: нормальный селект
     if (selectAll) editor.select();
 
     const finish = (save) => {
@@ -792,7 +858,7 @@
     editor.onblur = () => finish(true);
   }
 
-  // ---------- Tap logic ----------
+  // ---------- Tap logic (double/triple click) ----------
   const tap = { id:null, count:0, t:0, timer:null };
   const TAP_WINDOW = 420;
 
@@ -818,8 +884,6 @@
   }
 
   // ---------- Dragging / pan ----------
-  let drag = null;
-
   function startNodeDrag(e, nodeId){
     const n = getNode(nodeId);
     if (!n) return;
@@ -831,8 +895,9 @@
     if (!drag) return;
 
     if (drag.kind === "node"){
-      const dx = (e.clientX - drag.sx) / map.view.k;
-      const dy = (e.clientY - drag.sy) / map.view.k;
+      const cam = map.cam;
+      const dx = (e.clientX - drag.sx) / cam.k;
+      const dy = (e.clientY - drag.sy) / cam.k;
       if (!drag.moved && Math.hypot(dx,dy) > 2) drag.moved = true;
       if (!drag.moved) return;
 
@@ -845,13 +910,18 @@
     }
 
     if (drag.kind === "pan"){
-      const dx = e.clientX - drag.sx;
-      const dy = e.clientY - drag.sy;
+      const dx = (e.clientX - drag.sx);
+      const dy = (e.clientY - drag.sy);
       if (!drag.moved && Math.hypot(dx,dy) > 4) drag.moved = true;
       if (!drag.moved) return;
-      map.view.x = drag.baseX + dx;
-      map.view.y = drag.baseY + dy;
-      applyTransform();
+
+      // пан = двигаем cam.x/cam.y в world
+      const cam = map.cam;
+      cam.x = drag.baseX - dx / cam.k;
+      cam.y = drag.baseY - dy / cam.k;
+      applyViewBox();
+      positionNodeBtn();
+      positionNodeMenu();
     }
   });
 
@@ -866,77 +936,108 @@
   svg.addEventListener("pointerdown", (e) => {
     if (editingId) return;
 
-    const onNode = safeClosest(e.target, '[data-id]') || safeClosest(e.target, '[data-dot-for]');
-    const onMenu = safeClosest(e.target, '#ctx') || safeClosest(e.target, '#dots');
-
-    if (!onNode && !onMenu){
+    const onNode = safeClosest(e.target, '[data-id]') || safeClosest(e.target, '[data-collapse-for]');
+    if (!onNode){
       selectedId = null;
-      ctxOpen = false;
+      hideOverlays();
       renderAll();
 
-      drag = { kind:"pan", pid:e.pointerId, sx:e.clientX, sy:e.clientY, baseX:map.view.x, baseY:map.view.y, moved:false };
+      const cam = map.cam;
+      drag = { kind:"pan", pid:e.pointerId, sx:e.clientX, sy:e.clientY, baseX:cam.x, baseY:cam.y, moved:false };
       svg.setPointerCapture(e.pointerId);
     }
   });
 
-  // Даблклик на пустом -> новая идея
+  // Даблклик на пустом -> ДОЧЕРНЯЯ от выбранной (как ты подтвердил)
   svg.addEventListener("dblclick", (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (editingId) return;
 
-    const onNode = safeClosest(e.target, '[data-id]') || safeClosest(e.target, '[data-dot-for]');
-    const onMenu = safeClosest(e.target, '#ctx') || safeClosest(e.target, '#dots');
-    if (onNode || onMenu) return;
+    const onNode = safeClosest(e.target, '[data-id]') || safeClosest(e.target, '[data-collapse-for]');
+    if (onNode) return;
+
+    if (!selectedId) return; // строго по твоему правилу
 
     const p = clientToWorld(e.clientX, e.clientY);
-    const id = uid();
-    map.nodes.push({
-      id,
-      x: p.x - 90,
-      y: p.y - 32,
-      text:"Новая идея",
-      style:{...PALETTE[0]},
-      parentId:null,
-      collapsed:false,
-      childColorNext:0,
-      fmt:{bold:false, italic:false, align:"center"}
-    });
-    selectedId = id;
-    autosave();
-    renderAll();
-    beginEdit(id, true);
+    addChildFrom(selectedId, p);
   });
 
   // анти-яндекс “перевести/найти” на dblclick по холсту
-  wrap.addEventListener("dblclick", (e) => {
-    e.preventDefault();
-  });
+  wrap.addEventListener("dblclick", (e) => e.preventDefault());
 
-  // zoom
+  // zoom (wheel) — через viewBox (без blur)
   wrap.addEventListener("wheel", (e) => {
     e.preventDefault();
     if (!map) return;
 
-    const delta = Math.sign(e.deltaY);
-    const step = 0.08;
-    let nk = map.view.k + (delta > 0 ? -step : step);
+    const cam = map.cam;
+    const step = 0.1;
+
+    const dir = Math.sign(e.deltaY);
+    let nk = cam.k + (dir > 0 ? -step : step);
     nk = Math.max(0.25, Math.min(3.5, nk));
     nk = Math.round(nk / step) * step;
 
     const before = clientToWorld(e.clientX, e.clientY);
+
+    cam.k = nk;
+
+    // чтобы точка под курсором оставалась под курсором
     const r = svg.getBoundingClientRect();
-    const vx = e.clientX - r.left;
-    const vy = e.clientY - r.top;
+    const cx = e.clientX - r.left;
+    const cy = e.clientY - r.top;
+    cam.x = before.x - cx / cam.k;
+    cam.y = before.y - cy / cam.k;
 
-    map.view.k = nk;
-    map.view.x = vx - before.x * nk;
-    map.view.y = vy - before.y * nk;
-
-    applyTransform();
-    renderDotsAndCtx();
+    applyViewBox();
+    positionNodeBtn();
+    positionNodeMenu();
     autosave();
   }, {passive:false});
+
+  // ---------- HTML overlay interactions ----------
+  nodeBtn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedId) return;
+    menuOpen = !menuOpen;
+    positionNodeMenu();
+  });
+
+  nodeMenu.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const btn = e.target.closest(".mBtn");
+    if (!btn) return;
+    const act = btn.dataset.act;
+    if (!act) return;
+
+    if (act === "close"){
+      menuOpen = false;
+      positionNodeMenu();
+      return;
+    }
+
+    if (!selectedId) return;
+    if (act === "child") addChildFrom(selectedId);
+    else if (act === "edit") beginEdit(selectedId, true);
+    else if (act === "collapse") toggleCollapse(selectedId);
+    else if (act === "delete") deleteSubtree(selectedId);
+
+    // после действия закрываем меню
+    menuOpen = false;
+    positionNodeMenu();
+  });
+
+  document.addEventListener("pointerdown", (e) => {
+    // клики вне меню/кнопки закрывают меню
+    if (e.target.closest("#nodeMenu") || e.target.closest("#nodeBtn")) return;
+    if (menuOpen){
+      menuOpen = false;
+      positionNodeMenu();
+    }
+  });
 
   // ---------- Projects UI ----------
   function rebuildProjectsUI(){
@@ -959,6 +1060,7 @@
     projList.style.display = (projList.style.display === "block") ? "none" : "block";
     downloadDrop.style.display = "none";
   });
+
   document.addEventListener("pointerdown", (e) => {
     if (e.target.closest("#projDD")) return;
     projList.style.display = "none";
@@ -972,26 +1074,73 @@
     showToast("Создано");
   };
 
+  function normalizeProject(p){
+    // миграция v9->v10: view -> cam
+    if (!p.data) p.data = { cam:{x:0,y:0,k:1}, nodes:[], links:[] };
+
+    if (!p.data.cam){
+      // если раньше была view {x,y,k} как pixel transform — поставим cam по-умному:
+      // Принимаем, что "центр идеи" был где-то в районе 360/240. Это ок для старта.
+      p.data.cam = { x: 0, y: 0, k: (p.data.view && p.data.view.k) ? p.data.view.k : 1 };
+    }
+
+    if (!Array.isArray(p.data.nodes) || !p.data.nodes.length){
+      // восстановим центральную идею
+      p.data.nodes = [{
+        id: uid(),
+        x: 360, y: 240,
+        text:"Центральная идея",
+        style:{...PALETTE[0]},
+        parentId:null,
+        collapsed:false,
+        childColorNext:0,
+        fmt:{bold:false, italic:false, align:"center"}
+      }];
+      p.data.links = [];
+    }
+
+    // гарантируем стиль/формат
+    p.data.nodes.forEach((n,i) => {
+      if (!n.style) n.style = {...PALETTE[i % PALETTE.length]};
+      if (!n.fmt) n.fmt = {bold:false, italic:false, align:"center"};
+      if (typeof n.collapsed !== "boolean") n.collapsed = false;
+      if (typeof n.childColorNext !== "number") n.childColorNext = 0;
+    });
+  }
+
   function setActiveProject(id){
     const p = store.projects[id];
     if (!p) return;
 
-    // защита: если в проекте почему-то нет узлов — восстановим
-    if (!p.data || !Array.isArray(p.data.nodes) || !p.data.nodes.length){
-      p.data = createEmptyProject(p.name || "Восстановлено").data;
-      saveStore();
-    }
+    normalizeProject(p);
 
     store.activeId = id;
     active = p;
     map = JSON.parse(JSON.stringify(p.data));
 
+    // подстроим камеру так, чтобы центральная идея была видна
+    const cam = map.cam;
+    if (!cam || typeof cam.k !== "number") map.cam = {x:0,y:0,k:1};
+
     selectedId = null;
     editingId = null;
-    ctxOpen = false;
+    hideOverlays();
 
     saveStore();
     rebuildProjectsUI();
+
+    // если есть центральный узел — выберем его для удобства
+    const root = map.nodes.find(n => n.parentId == null) || map.nodes[0];
+    if (root) selectedId = root.id;
+
+    // выставим cam так, чтобы root оказался примерно в центре экрана
+    const {w,h} = stageSize();
+    const centerX = (root ? root.x : 360);
+    const centerY = (root ? root.y : 240);
+    map.cam.x = centerX - (w/(2*map.cam.k));
+    map.cam.y = centerY - (h/(2*map.cam.k));
+
+    autosave();
     renderAll();
   }
 
@@ -1002,6 +1151,7 @@
     downloadDrop.style.display = (downloadDrop.style.display === "block") ? "none" : "block";
     projList.style.display = "none";
   });
+
   document.addEventListener("pointerdown", (e) => {
     if (e.target.closest(".menuWrap")) return;
     closeDownload();
@@ -1009,7 +1159,7 @@
 
   exportOneBtn.onclick = () => {
     commitMap();
-    const payload = { kind:"mindmap_project", version:9, project: store.projects[store.activeId] };
+    const payload = { kind:"mindmap_project", version:10, project: store.projects[store.activeId] };
     downloadJson(payload, safeName(active.name || "mindmap") + ".json");
     closeDownload();
     showToast("Экспортировано");
@@ -1017,7 +1167,7 @@
 
   exportAllBtn.onclick = () => {
     commitMap();
-    const payload = { kind:"mindmap_store", version:9, store };
+    const payload = { kind:"mindmap_store", version:10, store };
     downloadJson(payload, "mindmaps_all.json");
     closeDownload();
     showToast("Экспорт всех готов");
@@ -1035,6 +1185,7 @@
         if (!p.id) p.id = uid();
         p.createdAt ||= nowTs();
         p.updatedAt ||= nowTs();
+        normalizeProject(p);
         store.projects[p.id] = p;
         store.activeId = p.id;
         saveStore();
@@ -1061,6 +1212,10 @@
         const s = obj.store;
         if (!s.projects || typeof s.projects !== "object") throw new Error("bad");
         store = s;
+
+        // нормализуем все проекты
+        Object.values(store.projects).forEach(p => normalizeProject(p));
+
         if (!store.activeId || !store.projects[store.activeId]){
           store.activeId = Object.keys(store.projects)[0];
         }
