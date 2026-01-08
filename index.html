@@ -189,18 +189,16 @@
       outline:none;
       background: rgba(255,255,255,.95);
       color: var(--text);
-
-      /* Важно: чтобы выделение мышкой работало */
       user-select:text;
       -webkit-user-select:text;
     }
 
-    /* HTML overlay button (⋯) + menu */
+    /* Node ⋯ button */
     .nodeBtn{
       position:absolute;
       z-index: 220;
-      width:24px;
-      height:24px;
+      width:26px;
+      height:26px;
       border-radius:999px;
       border:1px solid rgba(11,19,36,.18);
       background: rgba(255,255,255,.92);
@@ -215,24 +213,37 @@
       width:3px;height:3px;border-radius:50%;
       background: rgba(11,19,36,.78);
       box-shadow: 0 -5px 0 rgba(11,19,36,.78), 0 5px 0 rgba(11,19,36,.78);
-      transform: translateY(-.5px); /* визуально центр */
+      transform: translateY(-.5px);
     }
 
+    /* Big node menu */
     .nodeMenu{
       position:absolute;
       z-index: 221;
       display:none;
-      gap:8px;
-      align-items:center;
-      padding:8px;
+      padding:10px;
       border-radius: 14px;
       background: rgba(20,28,40,.92);
       border: 1px solid rgba(255,255,255,.10);
       box-shadow: var(--shadow);
       backdrop-filter: blur(10px);
+      width: min(560px, calc(100vw - 24px));
     }
-    .nodeMenu .mBtn{
-      width:34px; height:34px;
+    .nodeMenuRow{
+      display:flex;
+      gap:8px;
+      align-items:center;
+      flex-wrap:wrap;
+    }
+    .nodeMenuRow + .nodeMenuRow{
+      margin-top:10px;
+      padding-top:10px;
+      border-top:1px solid rgba(255,255,255,.08);
+    }
+    .mBtn{
+      height:36px;
+      min-width:36px;
+      padding:0 10px;
       border-radius: 12px;
       border: 1px solid rgba(255,255,255,.10);
       background: rgba(255,255,255,.06);
@@ -241,13 +252,67 @@
       cursor:pointer;
       user-select:none;
       font-weight:800;
-      font-size:16px;
+      font-size:14px;
       line-height:1;
+      gap:8px;
     }
-    .nodeMenu .mBtn:hover{
+    .mBtn:hover{
       border-color: rgba(89,195,255,.35);
       background: rgba(255,255,255,.10);
     }
+    .mBtn.small{ min-width:36px; padding:0 8px; }
+    .mBtn.danger:hover{ border-color: rgba(255,92,122,.45); }
+    .mBtn.active{
+      border-color: rgba(89,195,255,.45);
+      background: rgba(89,195,255,.18);
+    }
+
+    .mLabel{
+      color: rgba(255,255,255,.70);
+      font-weight:700;
+      font-size:12px;
+      margin-right:4px;
+    }
+
+    /* Emoji picker */
+    .emojiPop{
+      position:absolute;
+      z-index: 222;
+      display:none;
+      width: min(420px, calc(100vw - 24px));
+      max-height: 260px;
+      overflow:auto;
+      border-radius: 14px;
+      background: rgba(255,255,255,.92);
+      border: 1px solid rgba(11,19,36,.14);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      padding: 10px;
+    }
+    .emojiGrid{
+      display:grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap:6px;
+    }
+    .emojiCell{
+      height:34px;
+      border-radius: 10px;
+      border: 1px solid rgba(11,19,36,.10);
+      background: rgba(255,255,255,.70);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      cursor:pointer;
+      user-select:none;
+      font-size:18px;
+    }
+    .emojiCell:hover{ border-color: rgba(89,195,255,.45); }
+
+    /* scrollbar style (чтобы не было “белых стрелок поверх”) */
+    .emojiPop::-webkit-scrollbar{ width:10px; height:10px; }
+    .emojiPop::-webkit-scrollbar-thumb{ background: rgba(11,19,36,.18); border-radius:999px; }
+    .emojiPop::-webkit-scrollbar-track{ background: rgba(11,19,36,.06); border-radius:999px; }
+
   </style>
 </head>
 
@@ -284,14 +349,34 @@
       <g id="nodes"></g>
     </svg>
 
-    <!-- HTML overlays -->
     <button class="nodeBtn" id="nodeBtn" title="Меню узла"><span class="nodeBtnDots"></span></button>
+
     <div class="nodeMenu" id="nodeMenu" role="menu" aria-label="Node menu">
-      <div class="mBtn" data-act="child" title="Дочерняя идея">↳</div>
-      <div class="mBtn" data-act="edit" title="Переименовать">✎</div>
-      <div class="mBtn" data-act="collapse" title="Свернуть/развернуть">○</div>
-      <div class="mBtn" data-act="delete" title="Удалить ветку">⌫</div>
-      <div class="mBtn" data-act="close" title="Закрыть">×</div>
+      <div class="nodeMenuRow">
+        <div class="mBtn small" data-act="child" title="Дочерняя идея">↳</div>
+        <div class="mBtn small" data-act="edit" title="Переименовать">✎</div>
+        <div class="mBtn small" data-act="collapse" title="Свернуть/развернуть">○</div>
+
+        <span class="mLabel">Стиль:</span>
+        <div class="mBtn small" data-act="bold" title="Жирный">B</div>
+        <div class="mBtn small" data-act="italic" title="Курсив"><span style="font-style:italic;font-weight:800">I</span></div>
+
+        <span class="mLabel">Выравн:</span>
+        <div class="mBtn small" data-act="al" title="Слева">≡</div>
+        <div class="mBtn small" data-act="ac" title="По центру">≣</div>
+        <div class="mBtn small" data-act="ar" title="Справа">≡</div>
+
+        <div class="mBtn" data-act="emoji" title="Эмодзи">😊 Эмодзи</div>
+      </div>
+
+      <div class="nodeMenuRow">
+        <div class="mBtn danger" data-act="delete" title="Удалить ветку">🗑 Удалить ветку</div>
+        <div class="mBtn" data-act="close" title="Закрыть">✖ Закрыть</div>
+      </div>
+    </div>
+
+    <div class="emojiPop" id="emojiPop" aria-label="Emoji picker">
+      <div class="emojiGrid" id="emojiGrid"></div>
     </div>
 
     <textarea id="editor" rows="2"></textarea>
@@ -301,7 +386,7 @@
 
 <script>
 (() => {
-  const STORE_KEY = "mindmap_projects_v10_viewbox";
+  const STORE_KEY = "mindmap_projects_v11_viewbox_bigmenu";
 
   const PALETTE = [
     {fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.62)"},
@@ -310,6 +395,15 @@
     {fill:"rgba(255,209,102,.20)", stroke:"rgba(205,150,40,.64)"},
     {fill:"rgba(176,122,255,.18)", stroke:"rgba(135,90,210,.64)"},
     {fill:"rgba(255,255,255,.80)", stroke:"rgba(11,19,36,.18)"}
+  ];
+
+  const EMOJIS = [
+    "😀","😄","😁","😅","😂","🙂","😉","😍","😘","😎",
+    "🤔","😮","😴","😵","😤","😭","😡","🤯","🥳","🤝",
+    "👍","👎","🙏","💪","🔥","💡","✅","❌","⚠️","⭐",
+    "📌","🧩","🧠","📝","📎","📈","📉","🔒","🔓","🧪",
+    "🎯","🚀","🛠️","⚙️","📦","🧷","🗂️","🗑️","📚","🧭",
+    "🏁","🧱","🌿","🌙","☀️","☁️","🌧️","🎵","🎧","🎬"
   ];
 
   const svg = document.getElementById("svg");
@@ -321,6 +415,8 @@
 
   const nodeBtn = document.getElementById("nodeBtn");
   const nodeMenu = document.getElementById("nodeMenu");
+  const emojiPop = document.getElementById("emojiPop");
+  const emojiGrid = document.getElementById("emojiGrid");
 
   const projBtn = document.getElementById("projBtn");
   const projBtnText = document.getElementById("projBtnText");
@@ -344,11 +440,9 @@
     showToast._t = setTimeout(()=> toast.classList.remove("show"), 2200);
   }
 
-  // показываем ошибку вместо "белого экрана"
   window.addEventListener("error", (e) => showToast("Ошибка: " + (e.message || e.error || "unknown")));
   window.addEventListener("unhandledrejection", (e) => showToast("Ошибка: " + (e.reason?.message || e.reason || "promise rejection")));
 
-  // ---------- SVG-safe helpers ----------
   function safeMatches(el, selector){
     if (!el) return false;
     const fn = el.matches || el.msMatchesSelector || el.webkitMatchesSelector;
@@ -378,8 +472,6 @@
     return null;
   }
 
-  // Камера теперь в WORLD-координатах: x,y = левый верх viewBox, k = zoom
-  // (чем больше k — тем ближе)
   function createEmptyProject(name="Новый майндмэп"){
     const id = uid();
     const centerId = uid();
@@ -389,6 +481,7 @@
         id:centerId,
         x: 360, y: 240,
         text:"Центральная идея",
+        emoji:"",
         style:{...PALETTE[0]},
         parentId:null,
         collapsed:false,
@@ -422,11 +515,10 @@
   let selectedId = null;
   let editingId = null;
 
-  // drag state
   let drag = null;
 
-  // overlay state
   let menuOpen = false;
+  let emojiOpen = false;
 
   function commitMap(){
     if (!active || !map) return;
@@ -461,11 +553,8 @@
   function applyViewBox(){
     const {w,h} = stageSize();
     const cam = map.cam;
-
-    // ширина/высота viewBox уменьшаются при zoom-in
     const vw = w / cam.k;
     const vh = h / cam.k;
-
     svg.setAttribute("viewBox", `${cam.x} ${cam.y} ${vw} ${vh}`);
   }
 
@@ -518,12 +607,16 @@
   function nodeBox(n){
     const padX = 22;
     const minW = 170;
-    const maxW = 520;
+    const maxW = 560;
     const fontSize = 20;
     const weight = (n.fmt && n.fmt.bold) ? 700 : 600;
-    const txt = (n.text || "").trim() || "Идея";
-    const w = Math.max(minW, Math.min(maxW, Math.ceil(measureTextWidth(txt, weight, fontSize) + padX*2)));
-    const h = 64;
+
+    const txt = ((n.text || "").trim() || "Идея");
+    const em  = (n.emoji || "").trim();
+
+    const full = em ? (em + " " + txt) : txt;
+    const w = Math.max(minW, Math.min(maxW, Math.ceil(measureTextWidth(full, weight, fontSize) + padX*2)));
+    const h = 58; // чуть компактнее, без “пухлости”
     return {w,h, fontSize, weight};
   }
 
@@ -542,11 +635,9 @@
     p.childColorNext = (p.childColorNext||0) + 1;
     const style = PALETTE[idx];
 
-    // позиция: по умолчанию справа; если кликнули в точку — уводим ближе к ней
     let x = p.x + 260;
     let y = p.y + (Math.random()*80 - 40);
     if (preferPoint){
-      // тянем в сторону клика, но ограничиваем
       const dx = Math.max(140, Math.min(360, preferPoint.x - p.x));
       const dy = Math.max(-220, Math.min(220, preferPoint.y - p.y));
       x = p.x + dx;
@@ -559,6 +650,7 @@
       x,
       y,
       text:"Дочерняя идея",
+      emoji:"",
       style:{...style},
       parentId: parentId,
       collapsed:false,
@@ -568,7 +660,7 @@
 
     addLink(parentId, id);
     selectedId = id;
-    menuOpen = false;
+    closeOverlays();
     autosave();
     renderAll();
     beginEdit(id, true);
@@ -585,8 +677,9 @@
     }
     map.nodes = map.nodes.filter(n => !ids.has(n.id));
     map.links = map.links.filter(l => !ids.has(l.a) && !ids.has(l.b));
+
     if (selectedId && ids.has(selectedId)) selectedId = null;
-    menuOpen = false;
+    closeOverlays();
     autosave();
     renderAll();
   }
@@ -637,7 +730,6 @@
       path.setAttribute("stroke","rgba(30,90,150,.45)");
       path.setAttribute("stroke-width","3");
       path.setAttribute("stroke-linecap","round");
-      // важно: stroke не "жирнеет" при зуме
       path.setAttribute("vector-effect","non-scaling-stroke");
       linksG.appendChild(path);
     }
@@ -667,15 +759,15 @@
       rect.setAttribute("vector-effect","non-scaling-stroke");
       g.appendChild(rect);
 
+      // текст: идеальная вертикальная центровка
       const text = document.createElementNS("http://www.w3.org/2000/svg","text");
-      text.setAttribute("y", h/2 + 7);
+      text.setAttribute("y", h/2);
       text.setAttribute("dominant-baseline","middle");
       text.style.fontFamily = "Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
       text.style.fontSize = fontSize + "px";
       text.style.fontWeight = String(weight);
       text.style.fontStyle = (n.fmt && n.fmt.italic) ? "italic" : "normal";
       text.style.fill = "rgba(11,19,36,.90)";
-      text.textContent = (n.text || "").trim() || "Идея";
 
       const align = (n.fmt && n.fmt.align) ? n.fmt.align : "center";
       if (align === "left"){
@@ -688,29 +780,47 @@
         text.setAttribute("text-anchor","middle");
         text.setAttribute("x", w/2);
       }
+
+      const txt = (n.text || "").trim() || "Идея";
+      const em  = (n.emoji || "").trim();
+      text.textContent = em ? (em + " " + txt) : txt;
+
       g.appendChild(text);
 
-      // select
+      // select (один клик)
       g.addEventListener("pointerdown", (e) => {
         if (editingId) return;
         e.stopPropagation();
         selectedId = n.id;
-        menuOpen = false;
-        renderAll(); // обновит кнопку ⋯ позицию
+        // меню не открываем авто — только через ⋯
+        renderAll();
       });
 
-      // drag start
+      // drag
       g.addEventListener("pointerdown", (e) => {
         if (editingId) return;
         e.stopPropagation();
         startNodeDrag(e, n.id);
       });
 
-      hookTapLogic(g, n.id);
+      // dbl/triple click “железно” через click.detail
+      g.addEventListener("click", (e) => {
+        if (editingId) return;
+        e.stopPropagation();
+
+        selectedId = n.id;
+        renderAll();
+
+        if (e.detail === 2){
+          addChildFrom(n.id);
+        } else if (e.detail >= 3){
+          beginEdit(n.id, true);
+        }
+      });
 
       nodesG.appendChild(g);
 
-      // collapse indicator (кружок — заполненный/пустой)
+      // collapse indicator (кружок)
       const kids = childrenOf(n.id);
       if (kids.length){
         const dot = document.createElementNS("http://www.w3.org/2000/svg","g");
@@ -746,29 +856,38 @@
     }
   }
 
-  // ---------- HTML overlay positioning ----------
-  function hideOverlays(){
+  // ---------- Overlays ----------
+  function closeOverlays(){
+    menuOpen = false;
+    emojiOpen = false;
+    nodeMenu.style.display = "none";
+    emojiPop.style.display = "none";
+    // nodeBtn может оставаться (если выбран узел)
+    positionNodeBtn();
+  }
+
+  function hideAllOverlaysHard(){
+    menuOpen = false;
+    emojiOpen = false;
     nodeBtn.style.display = "none";
     nodeMenu.style.display = "none";
-    menuOpen = false;
+    emojiPop.style.display = "none";
   }
 
   function positionNodeBtn(){
-    if (!selectedId) { hideOverlays(); return; }
+    if (!selectedId) { hideAllOverlaysHard(); return; }
     const n = getNode(selectedId);
-    if (!n || isHiddenByCollapse(selectedId)) { hideOverlays(); return; }
+    if (!n || isHiddenByCollapse(selectedId)) { hideAllOverlaysHard(); return; }
 
     const {w,h} = nodeBox(n);
-    const p = worldToClient(n.x + w/2, n.y + h); // низ по центру
+    const p = worldToClient(n.x + w/2, n.y + h);
     const s = stageSize();
 
-    // кнопка чуть ниже узла (буквально “полсантиметра”)
-    const left = p.x - 12;
+    const left = p.x - 13;
     const top  = p.y + 6;
 
-    // clamp в пределах wrap
-    const cl = Math.max(s.left + 8, Math.min(s.left + s.w - 32, left));
-    const ct = Math.max(s.top + 8, Math.min(s.top + s.h - 32, top));
+    const cl = Math.max(s.left + 8, Math.min(s.left + s.w - 34, left));
+    const ct = Math.max(s.top + 8, Math.min(s.top + s.h - 34, top));
 
     nodeBtn.style.left = (cl - s.left) + "px";
     nodeBtn.style.top  = (ct - s.top) + "px";
@@ -784,18 +903,67 @@
     const s = stageSize();
     const p = worldToClient(n.x + w/2, n.y + h);
 
-    nodeMenu.style.display = "flex";
+    nodeMenu.style.display = "block";
 
-    // меню всегда ниже кнопки ⋯
-    const menuW = 8 + (5 * (34 + 8)); // приблизительно
+    // меню строго ниже ⋯
+    const menuW = nodeMenu.getBoundingClientRect().width || 520;
     const left = (p.x - menuW/2);
-    const top  = (p.y + 40);
+    const top  = (p.y + 44);
 
     const cl = Math.max(s.left + 8, Math.min(s.left + s.w - menuW - 8, left));
-    const ct = Math.max(s.top + 8, Math.min(s.top + s.h - 70, top));
+    const ct = Math.max(s.top + 8, Math.min(s.top + s.h - 140, top));
 
     nodeMenu.style.left = (cl - s.left) + "px";
     nodeMenu.style.top  = (ct - s.top) + "px";
+
+    // подсветить active кнопки
+    refreshMenuButtonsState();
+  }
+
+  function positionEmojiPop(){
+    if (!emojiOpen) { emojiPop.style.display="none"; return; }
+
+    const rMenu = nodeMenu.getBoundingClientRect();
+    const s = stageSize();
+
+    emojiPop.style.display = "block";
+    const popW = emojiPop.getBoundingClientRect().width || 380;
+
+    const left = s.left + 8 + (rMenu.left - s.left);
+    const top = rMenu.bottom + 8;
+
+    const cl = Math.max(s.left + 8, Math.min(s.left + s.w - popW - 8, left));
+    const ct = Math.max(s.top + 8, Math.min(s.top + s.h - 280, top));
+
+    emojiPop.style.left = (cl - s.left) + "px";
+    emojiPop.style.top  = (ct - s.top) + "px";
+  }
+
+  function refreshMenuButtonsState(){
+    const n = selectedId ? getNode(selectedId) : null;
+    if (!n) return;
+
+    const bold = !!(n.fmt && n.fmt.bold);
+    const italic = !!(n.fmt && n.fmt.italic);
+    const align = (n.fmt && n.fmt.align) ? n.fmt.align : "center";
+
+    nodeMenu.querySelectorAll(".mBtn").forEach(b => b.classList.remove("active"));
+
+    const bBold = nodeMenu.querySelector('[data-act="bold"]');
+    const bIt = nodeMenu.querySelector('[data-act="italic"]');
+    if (bold) bBold.classList.add("active");
+    if (italic) bIt.classList.add("active");
+
+    const al = nodeMenu.querySelector('[data-act="al"]');
+    const ac = nodeMenu.querySelector('[data-act="ac"]');
+    const ar = nodeMenu.querySelector('[data-act="ar"]');
+    if (align === "left") al.classList.add("active");
+    else if (align === "right") ar.classList.add("active");
+    else ac.classList.add("active");
+
+    // collapse button label circle state
+    const bCol = nodeMenu.querySelector('[data-act="collapse"]');
+    bCol.textContent = n.collapsed ? "●" : "○";
   }
 
   // ---------- Render all ----------
@@ -805,6 +973,7 @@
     renderNodes();
     positionNodeBtn();
     positionNodeMenu();
+    positionEmojiPop();
   }
 
   // ---------- Editor ----------
@@ -813,18 +982,17 @@
     if (!n) return;
 
     editingId = id;
-    menuOpen = false;
+    closeOverlays();
     renderAll();
 
     const {w,h,fontSize,weight} = nodeBox(n);
     const p = worldToClient(n.x, n.y);
-
-    // редактор в пикселях (чётко, удобно)
     const cam = map.cam;
     const k = cam.k;
 
-    editor.style.left = (p.x - stageSize().left) + "px";
-    editor.style.top  = (p.y - stageSize().top) + "px";
+    const s = stageSize();
+    editor.style.left = (p.x - s.left) + "px";
+    editor.style.top  = (p.y - s.top) + "px";
     editor.style.width = Math.max(120, Math.round(w * k)) + "px";
     editor.style.height = Math.max(44, Math.round(h * k)) + "px";
     editor.style.fontSize = Math.max(14, Math.round(fontSize * k)) + "px";
@@ -835,8 +1003,6 @@
     editor.value = (n.text || "").trim() || "Идея";
     editor.style.display = "block";
     editor.focus();
-
-    // важно: нормальный селект
     if (selectAll) editor.select();
 
     const finish = (save) => {
@@ -856,31 +1022,6 @@
       else if (e.key === "Escape"){ e.preventDefault(); finish(false); }
     };
     editor.onblur = () => finish(true);
-  }
-
-  // ---------- Tap logic (double/triple click) ----------
-  const tap = { id:null, count:0, t:0, timer:null };
-  const TAP_WINDOW = 420;
-
-  function hookTapLogic(el, id){
-    el.addEventListener("pointerup", (e) => {
-      if (editingId) return;
-      if (drag && drag.moved) return;
-
-      const now = Date.now();
-      const same = (tap.id === id) && (now - tap.t <= TAP_WINDOW);
-      tap.id = id;
-      tap.t = now;
-      tap.count = same ? (tap.count + 1) : 1;
-
-      if (tap.timer) clearTimeout(tap.timer);
-      tap.timer = setTimeout(() => {
-        if (tap.id !== id) return;
-        if (tap.count === 2) addChildFrom(id);
-        else if (tap.count >= 3) beginEdit(id, true);
-        tap.id=null; tap.count=0; tap.timer=null;
-      }, TAP_WINDOW + 30);
-    });
   }
 
   // ---------- Dragging / pan ----------
@@ -915,13 +1056,13 @@
       if (!drag.moved && Math.hypot(dx,dy) > 4) drag.moved = true;
       if (!drag.moved) return;
 
-      // пан = двигаем cam.x/cam.y в world
       const cam = map.cam;
       cam.x = drag.baseX - dx / cam.k;
       cam.y = drag.baseY - dy / cam.k;
       applyViewBox();
       positionNodeBtn();
       positionNodeMenu();
+      positionEmojiPop();
     }
   });
 
@@ -939,7 +1080,7 @@
     const onNode = safeClosest(e.target, '[data-id]') || safeClosest(e.target, '[data-collapse-for]');
     if (!onNode){
       selectedId = null;
-      hideOverlays();
+      closeOverlays();
       renderAll();
 
       const cam = map.cam;
@@ -948,7 +1089,7 @@
     }
   });
 
-  // Даблклик на пустом -> ДОЧЕРНЯЯ от выбранной (как ты подтвердил)
+  // double click на пустом — создаём ДОЧЕРНЮЮ от выбранной (как ты хотел)
   svg.addEventListener("dblclick", (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -957,8 +1098,7 @@
     const onNode = safeClosest(e.target, '[data-id]') || safeClosest(e.target, '[data-collapse-for]');
     if (onNode) return;
 
-    if (!selectedId) return; // строго по твоему правилу
-
+    if (!selectedId) return;
     const p = clientToWorld(e.clientX, e.clientY);
     addChildFrom(selectedId, p);
   });
@@ -966,7 +1106,7 @@
   // анти-яндекс “перевести/найти” на dblclick по холсту
   wrap.addEventListener("dblclick", (e) => e.preventDefault());
 
-  // zoom (wheel) — через viewBox (без blur)
+  // zoom wheel (viewBox)
   wrap.addEventListener("wheel", (e) => {
     e.preventDefault();
     if (!map) return;
@@ -980,10 +1120,8 @@
     nk = Math.round(nk / step) * step;
 
     const before = clientToWorld(e.clientX, e.clientY);
-
     cam.k = nk;
 
-    // чтобы точка под курсором оставалась под курсором
     const r = svg.getBoundingClientRect();
     const cx = e.clientX - r.left;
     const cy = e.clientY - r.top;
@@ -993,16 +1131,19 @@
     applyViewBox();
     positionNodeBtn();
     positionNodeMenu();
+    positionEmojiPop();
     autosave();
   }, {passive:false});
 
-  // ---------- HTML overlay interactions ----------
+  // ---------- Node menu ----------
   nodeBtn.addEventListener("pointerdown", (e) => {
     e.preventDefault();
     e.stopPropagation();
     if (!selectedId) return;
     menuOpen = !menuOpen;
+    emojiOpen = false;
     positionNodeMenu();
+    positionEmojiPop();
   });
 
   nodeMenu.addEventListener("pointerdown", (e) => {
@@ -1013,31 +1154,119 @@
     const act = btn.dataset.act;
     if (!act) return;
 
+    const n = selectedId ? getNode(selectedId) : null;
+    if (!n) return;
+
     if (act === "close"){
-      menuOpen = false;
-      positionNodeMenu();
+      closeOverlays();
+      renderAll();
       return;
     }
 
-    if (!selectedId) return;
-    if (act === "child") addChildFrom(selectedId);
-    else if (act === "edit") beginEdit(selectedId, true);
-    else if (act === "collapse") toggleCollapse(selectedId);
-    else if (act === "delete") deleteSubtree(selectedId);
+    if (act === "child"){
+      addChildFrom(selectedId);
+      closeOverlays();
+      renderAll();
+      return;
+    }
 
-    // после действия закрываем меню
-    menuOpen = false;
-    positionNodeMenu();
+    if (act === "edit"){
+      beginEdit(selectedId, true);
+      return;
+    }
+
+    if (act === "collapse"){
+      toggleCollapse(selectedId);
+      // не закрываем меню — удобно
+      refreshMenuButtonsState();
+      return;
+    }
+
+    if (act === "delete"){
+      deleteSubtree(selectedId);
+      closeOverlays();
+      renderAll();
+      return;
+    }
+
+    if (act === "bold"){
+      n.fmt ||= {bold:false, italic:false, align:"center"};
+      n.fmt.bold = !n.fmt.bold;
+      autosave();
+      renderAll();
+      return;
+    }
+
+    if (act === "italic"){
+      n.fmt ||= {bold:false, italic:false, align:"center"};
+      n.fmt.italic = !n.fmt.italic;
+      autosave();
+      renderAll();
+      return;
+    }
+
+    if (act === "al" || act === "ac" || act === "ar"){
+      n.fmt ||= {bold:false, italic:false, align:"center"};
+      n.fmt.align = (act === "al") ? "left" : (act === "ar" ? "right" : "center");
+      autosave();
+      renderAll();
+      return;
+    }
+
+    if (act === "emoji"){
+      emojiOpen = !emojiOpen;
+      positionEmojiPop();
+      return;
+    }
   });
 
   document.addEventListener("pointerdown", (e) => {
-    // клики вне меню/кнопки закрывают меню
-    if (e.target.closest("#nodeMenu") || e.target.closest("#nodeBtn")) return;
-    if (menuOpen){
-      menuOpen = false;
-      positionNodeMenu();
+    if (e.target.closest("#nodeMenu") || e.target.closest("#nodeBtn") || e.target.closest("#emojiPop")) return;
+    if (menuOpen || emojiOpen){
+      closeOverlays();
+      renderAll();
     }
   });
+
+  // Emoji fill
+  function buildEmojiGrid(){
+    emojiGrid.innerHTML = "";
+    EMOJIS.forEach(em => {
+      const cell = document.createElement("div");
+      cell.className = "emojiCell";
+      cell.textContent = em;
+      cell.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const n = selectedId ? getNode(selectedId) : null;
+        if (!n) return;
+        n.emoji = em;
+        autosave();
+        emojiOpen = false;
+        renderAll();
+      });
+      emojiGrid.appendChild(cell);
+    });
+
+    // “снять эмодзи”
+    const none = document.createElement("div");
+    none.className = "emojiCell";
+    none.textContent = "×";
+    none.title = "Убрать эмодзи";
+    none.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const n = selectedId ? getNode(selectedId) : null;
+      if (!n) return;
+      n.emoji = "";
+      autosave();
+      emojiOpen = false;
+      renderAll();
+    });
+    emojiGrid.prepend(none);
+  }
+
+  buildEmojiGrid();
 
   // ---------- Projects UI ----------
   function rebuildProjectsUI(){
@@ -1075,21 +1304,19 @@
   };
 
   function normalizeProject(p){
-    // миграция v9->v10: view -> cam
     if (!p.data) p.data = { cam:{x:0,y:0,k:1}, nodes:[], links:[] };
 
+    // миграция старого view -> cam (если вдруг)
     if (!p.data.cam){
-      // если раньше была view {x,y,k} как pixel transform — поставим cam по-умному:
-      // Принимаем, что "центр идеи" был где-то в районе 360/240. Это ок для старта.
       p.data.cam = { x: 0, y: 0, k: (p.data.view && p.data.view.k) ? p.data.view.k : 1 };
     }
 
     if (!Array.isArray(p.data.nodes) || !p.data.nodes.length){
-      // восстановим центральную идею
       p.data.nodes = [{
         id: uid(),
         x: 360, y: 240,
         text:"Центральная идея",
+        emoji:"",
         style:{...PALETTE[0]},
         parentId:null,
         collapsed:false,
@@ -1099,12 +1326,12 @@
       p.data.links = [];
     }
 
-    // гарантируем стиль/формат
     p.data.nodes.forEach((n,i) => {
       if (!n.style) n.style = {...PALETTE[i % PALETTE.length]};
       if (!n.fmt) n.fmt = {bold:false, italic:false, align:"center"};
       if (typeof n.collapsed !== "boolean") n.collapsed = false;
       if (typeof n.childColorNext !== "number") n.childColorNext = 0;
+      if (typeof n.emoji !== "string") n.emoji = "";
     });
   }
 
@@ -1118,27 +1345,23 @@
     active = p;
     map = JSON.parse(JSON.stringify(p.data));
 
-    // подстроим камеру так, чтобы центральная идея была видна
-    const cam = map.cam;
-    if (!cam || typeof cam.k !== "number") map.cam = {x:0,y:0,k:1};
-
     selectedId = null;
     editingId = null;
-    hideOverlays();
+    closeOverlays();
 
     saveStore();
     rebuildProjectsUI();
 
-    // если есть центральный узел — выберем его для удобства
     const root = map.nodes.find(n => n.parentId == null) || map.nodes[0];
     if (root) selectedId = root.id;
 
-    // выставим cam так, чтобы root оказался примерно в центре экрана
+    // камеру на root
     const {w,h} = stageSize();
+    const cam = map.cam;
     const centerX = (root ? root.x : 360);
     const centerY = (root ? root.y : 240);
-    map.cam.x = centerX - (w/(2*map.cam.k));
-    map.cam.y = centerY - (h/(2*map.cam.k));
+    cam.x = centerX - (w/(2*cam.k));
+    cam.y = centerY - (h/(2*cam.k));
 
     autosave();
     renderAll();
@@ -1159,7 +1382,7 @@
 
   exportOneBtn.onclick = () => {
     commitMap();
-    const payload = { kind:"mindmap_project", version:10, project: store.projects[store.activeId] };
+    const payload = { kind:"mindmap_project", version:11, project: store.projects[store.activeId] };
     downloadJson(payload, safeName(active.name || "mindmap") + ".json");
     closeDownload();
     showToast("Экспортировано");
@@ -1167,7 +1390,7 @@
 
   exportAllBtn.onclick = () => {
     commitMap();
-    const payload = { kind:"mindmap_store", version:10, store };
+    const payload = { kind:"mindmap_store", version:11, store };
     downloadJson(payload, "mindmaps_all.json");
     closeDownload();
     showToast("Экспорт всех готов");
@@ -1212,10 +1435,7 @@
         const s = obj.store;
         if (!s.projects || typeof s.projects !== "object") throw new Error("bad");
         store = s;
-
-        // нормализуем все проекты
         Object.values(store.projects).forEach(p => normalizeProject(p));
-
         if (!store.activeId || !store.projects[store.activeId]){
           store.activeId = Object.keys(store.projects)[0];
         }
