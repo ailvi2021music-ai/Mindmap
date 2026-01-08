@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
+  <title>MindMap</title>
+  <meta name="theme-color" content="#f3f7ff"/>
+
+  <style>
+    /* чтобы ты сразу видел, что загрузилась НОВАЯ версия */
+    #buildBadge{
+      position:fixed; right:10px; bottom:10px; z-index:9999;
+      background:rgba(0,0,0,.70); color:#fff;
+      padding:6px 10px; border-radius:10px; font:600 12px/1.2 system-ui;
+      pointer-events:none;
+    }
+
+    /* ниже можешь вставить весь CSS приложения */
+    :root{
+      --text:#0b1324;
+      --stroke:rgba(11,19,36,.12);
+      --shadow: 0 18px 60px rgba(10,20,40,.14);
+      --grid:rgba(10,20,40,.06);
+      --glass: rgba(255,255,255,.72);
+    }
+    *{ box-sizing:border-box; }
+    html,body{height:100%;margin:0;overflow:hidden;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;color:var(--text);}
+    body{
+      background:
+        radial-gradient(1000px 700px at 20% 10%, rgba(89,195,255,.28), transparent 58%),
+        radial-gradient(900px 650px at 85% 20%, rgba(255,92,122,.20), transparent 60%),
+        radial-gradient(1000px 700px at 55% 95%, rgba(60,224,122,.22), transparent 60%),
+        linear-gradient(180deg, #f7fbff, #eef4ff 55%, #f8fbff);
+    }
+    .app{ height:100%; display:flex; flex-direction:column; }
+    header{
+      display:flex; gap:10px; align-items:center; padding:12px 14px;
+      position:sticky; top:0; z-index:100;
+      background: var(--glass);
+      border-bottom:1px solid var(--stroke);
+      backdrop-filter: blur(10px);
+      flex-wrap:wrap;
+    }
+    .btn{
+      appearance:none;
+      border:1px solid var(--stroke);
+      background:rgba(255,255,255,.70);
+      color:var(--text);
+      padding:9px 10px;
+      border-radius:12px;
+      box-shadow: 0 8px 22px rgba(0,0,0,.06);
+      cursor:pointer;
+      user-select:none;
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+      font: 600 14px/1 system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      height: 38px;
+    }
+    .stageWrap{
+      flex:1; position:relative; overflow:hidden;
+      user-select:none; -webkit-user-select:none; -ms-user-select:none; -moz-user-select:none;
+    }
+    #svg{ position:absolute; inset:0; touch-action:none; user-select:none; -webkit-user-select:none; }
+
+    .toast{
+      position:absolute; left:50%; bottom:14px; transform:translateX(-50%);
+      background: rgba(255,255,255,.78);
+      border:1px solid rgba(11,19,36,.14);
+      padding:10px 12px; border-radius:12px;
+      backdrop-filter: blur(10px);
+      box-shadow: var(--shadow);
+      opacity:0; pointer-events:none;
+      transition: opacity .18s ease;
+      max-width:min(900px, calc(100% - 24px));
+      z-index:110;
+      font-weight:700;
+      white-space:pre-wrap;
+    }
+    .toast.show{ opacity:1; }
+  </style>
+</head>
+
+<body>
+<div id="buildBadge"></div>
+
+<div class="app">
+  <header>
+    <button class="btn" onclick="location.href='index.html'">← На главную</button>
+    <span style="opacity:.8">MindMap</span>
+  </header>
+
+  <div class="stageWrap" id="wrap">
+    <svg id="svg" xmlns="http://www.w3.org/2000/svg">
+      <g id="world">
+        <g id="links"></g>
+        <g id="nodes"></g>
+      </g>
+    </svg>
+    <div class="toast" id="toast"></div>
+  </div>
+</div>
+
+<script>
+  // Показываем build прямо на странице — 100% видно, что обновилось
+  const params = new URLSearchParams(location.search);
+  const build = params.get("v") || "no-v";
+  document.getElementById("buildBadge").textContent = "build: " + build;
+
+  const toast = document.getElementById("toast");
+  function showToast(msg){
+    toast.textContent = msg;
+    toast.classList.add("show");
+    clearTimeout(showToast._t);
+    showToast._t = setTimeout(()=> toast.classList.remove("show"), 2500);
+  }
+
+  window.addEventListener("error", (e)=> showToast("Ошибка: " + (e.message || "unknown")));
+  window.addEventListener("unhandledrejection", (e)=> showToast("Ошибка: " + (e.reason?.message || e.reason || "promise")));
+
+  // Мини-рендер, чтобы не было белого экрана даже если остальной код не вставлен
+  // Если это видно — значит HTML+JS реально загрузились.
+  const svg = document.getElementById("svg");
+  const nodesG = document.getElementById("nodes");
+  const linksG = document.getElementById("links");
+
+  function addNode(x,y,text){
+    const g = document.createElementNS("http://www.w3.org/2000/svg","g");
+    g.setAttribute("transform", `translate(${x} ${y})`);
+
+    const r = document.createElementNS("http://www.w3.org/2000/svg","rect");
+    r.setAttribute("width", 220);
+    r.setAttribute("height", 64);
+    r.setAttribute("rx", 18);
+    r.setAttribute("fill", "rgba(89,195,255,.20)");
+    r.setAttribute("stroke", "rgba(33,140,210,.62)");
+    r.setAttribute("stroke-width", "2");
+    g.appendChild(r);
+
+    const t = document.createElementNS("http://www.w3.org/2000/svg","text");
+    t.setAttribute("x", 110);
+    t.setAttribute("y", 32);
+    t.setAttribute("text-anchor","middle");
+    t.setAttribute("dominant-baseline","middle");
+    t.style.fontSize = "20px";
+    t.style.fontWeight = "700";
+    t.textContent = text;
+    g.appendChild(t);
+
+    nodesG.appendChild(g);
+  }
+
+  addNode(120,120,"Центральная идея");
+  showToast("Если видишь эту идею и бейдж build — анти-кэш работает ✅");
+</script>
+</body>
+</html>
