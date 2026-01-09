@@ -151,10 +151,13 @@
 
     #svg{
       position:absolute; inset:0;
+      width:100%;
+      height:100%;
       z-index:1;
       touch-action:none;
       user-select:none;
       -webkit-user-select:none;
+      -webkit-tap-highlight-color: transparent;
     }
 
     .toast{
@@ -174,7 +177,6 @@
     }
     .toast.show{ opacity:1; }
 
-    /* Inline editor */
     #editor{
       position:absolute;
       z-index: 300;
@@ -192,7 +194,6 @@
       -webkit-user-select:text;
     }
 
-    /* Node ⋯ button */
     .nodeBtn{
       position:absolute;
       z-index: 220;
@@ -207,6 +208,7 @@
       justify-content:center;
       cursor:pointer;
       padding:0;
+      -webkit-tap-highlight-color: transparent;
     }
     .nodeBtnDots{
       width:3px;height:3px;border-radius:50%;
@@ -215,7 +217,6 @@
       transform: translateY(-.5px);
     }
 
-    /* Icon-only node menu */
     .nodeMenu{
       position:absolute;
       z-index: 221;
@@ -230,13 +231,11 @@
       max-width: calc(100vw - 24px);
       white-space:nowrap;
     }
-
     .menuRow{
       display:flex;
       align-items:center;
       gap:10px;
     }
-
     .sep{
       width:1px;
       height:22px;
@@ -244,7 +243,6 @@
       border-radius:999px;
       margin: 0 2px;
     }
-
     .iBtn{
       width:36px;
       height:36px;
@@ -258,6 +256,7 @@
       font-weight:900;
       font-size:16px;
       line-height:1;
+      -webkit-tap-highlight-color: transparent;
     }
     .iBtn:hover{
       border-color: rgba(89,195,255,.35);
@@ -268,7 +267,6 @@
       background: rgba(89,195,255,.18);
     }
 
-    /* Emoji picker */
     .emojiPop{
       position:absolute;
       z-index: 222;
@@ -301,7 +299,6 @@
       font-size:18px;
     }
     .emojiCell:hover{ border-color: rgba(89,195,255,.45); }
-
     .emojiPop::-webkit-scrollbar{ width:10px; height:10px; }
     .emojiPop::-webkit-scrollbar-thumb{ background: rgba(11,19,36,.18); border-radius:999px; }
     .emojiPop::-webkit-scrollbar-track{ background: rgba(11,19,36,.06); border-radius:999px; }
@@ -356,9 +353,9 @@
 
         <div class="sep"></div>
 
-        <div class="iBtn" data-act="al" title="Выравнивание слева">≡</div>
-        <div class="iBtn" data-act="ac" title="Выравнивание по центру">≣</div>
-        <div class="iBtn" data-act="ar" title="Выравнивание справа">≡</div>
+        <div class="iBtn" data-act="al" title="Слева">≡</div>
+        <div class="iBtn" data-act="ac" title="Центр">≣</div>
+        <div class="iBtn" data-act="ar" title="Справа">≡</div>
 
         <div class="sep"></div>
 
@@ -377,7 +374,7 @@
 
 <script>
 (() => {
-  const STORE_KEY = "mindmap_projects_v12_stable_dbl_triple";
+  const STORE_KEY = "mindmap_projects_v13_ipad_fix";
 
   const PALETTE = [
     {fill:"rgba(89,195,255,.20)", stroke:"rgba(33,140,210,.62)"},
@@ -491,12 +488,13 @@
   let selectedId = null;
   let editingId = null;
 
-  // drag state
   let drag = null;
 
-  // overlays
   let menuOpen = false;
   let emojiOpen = false;
+
+  // touch long-press editor
+  let lp = null; // {id, timer, pid}
 
   function commitMap(){
     if (!active || !map) return;
@@ -565,7 +563,6 @@
     }
     return false;
   }
-
   function clear(g){ while(g.firstChild) g.removeChild(g.firstChild); }
 
   function measureTextWidth(text, weight=600, size=16){
@@ -591,8 +588,8 @@
 
     const txt = ((n.text || "").trim() || "Идея");
     const em  = (n.emoji || "").trim();
-
     const full = em ? (em + " " + txt) : txt;
+
     const w = Math.max(minW, Math.min(maxW, Math.ceil(measureTextWidth(full, weight, fontSize) + padX*2)));
     const h = 58;
     return {w,h, fontSize, weight};
@@ -624,9 +621,7 @@
 
     const id = uid();
     map.nodes.push({
-      id,
-      x,
-      y,
+      id, x, y,
       text:"Дочерняя идея",
       emoji:"",
       style:{...style},
@@ -646,7 +641,6 @@
   }
 
   function deleteSubtree(id){
-    // root protection: не удаляем единственный root
     const n = getNode(id);
     if (!n) return;
     if (n.parentId == null){
@@ -663,8 +657,8 @@
     }
     map.nodes = map.nodes.filter(n => !ids.has(n.id));
     map.links = map.links.filter(l => !ids.has(l.a) && !ids.has(l.b));
-
     if (selectedId && ids.has(selectedId)) selectedId = null;
+
     closeOverlays();
     autosave();
     renderAll();
@@ -721,10 +715,11 @@
     }
   }
 
-  // ----- stable multi-click engine (NO dblclick dependency) -----
+  // -------- click logic for mouse/pen only (avoid iPad triple-tap hell) --------
   const TAP_WINDOW = 420;
   const tap = { id:null, count:0, t:0, timer:null };
-  function registerTap(nodeId){
+
+  function registerTapMouse(nodeId){
     const now = Date.now();
     const same = (tap.id === nodeId) && (now - tap.t <= TAP_WINDOW);
     tap.id = nodeId;
@@ -743,7 +738,7 @@
       if (count === 2){
         addChildFrom(nodeId);
       } else if (count >= 3){
-        beginEdit(nodeId, true); // selectAll = true (замена при вводе)
+        beginEdit(nodeId, true);
       }
     }, TAP_WINDOW + 30);
   }
@@ -799,17 +794,29 @@
 
       g.appendChild(text);
 
-      // Unified pointer handler:
-      // - pointerdown: prepare (no capture yet)
-      // - pointermove: if moved enough -> start drag and capture
-      // - pointerup: if not dragged -> register tap count
       g.addEventListener("pointerdown", (e) => {
         if (editingId) return;
         e.stopPropagation();
 
         selectedId = n.id;
-        // menu НЕ открываем автоматически
         renderAll();
+
+        // LONG PRESS edit for touch (iPad)
+        if (e.pointerType === "touch"){
+          clearTimeout(lp?.timer);
+          lp = {
+            id: n.id,
+            pid: e.pointerId,
+            timer: setTimeout(() => {
+              // if still the same node selected and not dragged
+              if (drag && drag.kind === "node" && drag.id === n.id && !drag.moved){
+                beginEdit(n.id, true);
+              } else if (!drag){
+                beginEdit(n.id, true);
+              }
+            }, 450)
+          };
+        }
 
         drag = {
           kind:"node",
@@ -818,13 +825,13 @@
           sx:e.clientX, sy:e.clientY,
           baseX:n.x, baseY:n.y,
           moved:false,
-          captured:false
+          captured:false,
+          pointerType: e.pointerType || "mouse"
         };
       });
 
       nodesG.appendChild(g);
 
-      // collapse indicator (кружок)
       const kids = childrenOf(n.id);
       if (kids.length){
         const dot = document.createElementNS("http://www.w3.org/2000/svg","g");
@@ -868,7 +875,6 @@
     emojiPop.style.display = "none";
     positionNodeBtn();
   }
-
   function hideAllOverlaysHard(){
     menuOpen = false;
     emojiOpen = false;
@@ -932,7 +938,7 @@
 
     const menuW = nodeMenu.getBoundingClientRect().width || 360;
     const left = (p.x - menuW/2);
-    const top  = (p.y + 44); // ниже ⋯
+    const top  = (p.y + 44);
 
     const cl = Math.max(s.left + 8, Math.min(s.left + s.w - menuW - 8, left));
     const ct = Math.max(s.top + 8, Math.min(s.top + s.h - 120, top));
@@ -959,7 +965,6 @@
     emojiPop.style.top  = (ct - s.top) + "px";
   }
 
-  // ---------- Render all ----------
   function renderAll(){
     applyViewBox();
     renderLinks();
@@ -996,11 +1001,7 @@
     editor.value = (n.text || "").trim() || "Идея";
     editor.style.display = "block";
     editor.focus();
-
-    if (selectAll){
-      editor.select();     // выделит всё
-      // и любой ввод заменит текст (браузер делает это сам)
-    }
+    if (selectAll) editor.select();
 
     const finish = (save) => {
       editor.onkeydown = null;
@@ -1021,9 +1022,39 @@
     editor.onblur = () => finish(true);
   }
 
-  // ---------- Pointer move/up global (for stable drag and stable taps) ----------
+  // ---------- AUTO-PAN when dragging node near edges (fix iPad "cropping") ----------
+  function autoPanIfNeeded(clientX, clientY){
+    const cam = map.cam;
+    const r = svg.getBoundingClientRect();
+    const margin = 42;
+    const speedPx = 10;
+
+    let panX = 0;
+    let panY = 0;
+
+    if (clientX < r.left + margin) panX = -speedPx;
+    else if (clientX > r.right - margin) panX = speedPx;
+
+    if (clientY < r.top + margin) panY = -speedPx;
+    else if (clientY > r.bottom - margin) panY = speedPx;
+
+    if (panX || panY){
+      cam.x += (panX / cam.k);
+      cam.y += (panY / cam.k);
+      return true;
+    }
+    return false;
+  }
+
+  // ---------- Pointer move/up global ----------
   svg.addEventListener("pointermove", (e) => {
     if (!drag) return;
+
+    // cancel long press if moved
+    if (lp && drag && drag.pid === lp.pid){
+      clearTimeout(lp.timer);
+      lp = null;
+    }
 
     if (drag.kind === "node"){
       const cam = map.cam;
@@ -1037,10 +1068,25 @@
           drag.captured = true;
           try{ svg.setPointerCapture(drag.pid); }catch(_){}
         }
+
         const n = getNode(drag.id);
         if (!n) return;
-        n.x = drag.baseX + dx;
-        n.y = drag.baseY + dy;
+
+        // auto-pan camera near edges
+        const panned = autoPanIfNeeded(e.clientX, e.clientY);
+
+        // if camera moved while dragging, adjust base so node doesn't "jump"
+        if (panned){
+          // keep drag anchor stable in world space
+          drag.baseX = n.x;
+          drag.baseY = n.y;
+          drag.sx = e.clientX;
+          drag.sy = e.clientY;
+        } else {
+          n.x = drag.baseX + dx;
+          n.y = drag.baseY + dy;
+        }
+
         autosave();
         renderAll();
       }
@@ -1064,21 +1110,43 @@
   });
 
   svg.addEventListener("pointerup", (e) => {
+    if (lp && lp.pid === e.pointerId){
+      clearTimeout(lp.timer);
+      lp = null;
+    }
+
     if (!drag) return;
 
     if (drag.kind === "node"){
       const id = drag.id;
       const wasMoved = !!drag.moved;
+      const pType = drag.pointerType || "mouse";
 
       if (drag.captured){
         try{ svg.releasePointerCapture(drag.pid); }catch(_){}
       }
-
       drag = null;
 
-      // если НЕ тянули — считаем как tap/click
+      // tap logic:
+      // - touch: double-tap creates child, long-press edits (no triple-tap)
+      // - mouse/pen: our multi-click (double=child, triple=edit)
       if (!wasMoved && !editingId){
-        registerTap(id);
+        if (pType === "touch"){
+          // emulate double tap: quick two taps
+          const now = Date.now();
+          const same = (tap.id === id) && (now - tap.t <= TAP_WINDOW);
+          tap.id = id; tap.t = now;
+          tap.count = same ? (tap.count + 1) : 1;
+
+          if (tap.timer) clearTimeout(tap.timer);
+          tap.timer = setTimeout(() => {
+            const c = tap.count;
+            tap.id=null; tap.count=0; tap.timer=null;
+            if (c >= 2) addChildFrom(id);
+          }, TAP_WINDOW + 30);
+        } else {
+          registerTapMouse(id);
+        }
       }
     } else if (drag.kind === "pan"){
       try{ svg.releasePointerCapture(drag.pid); }catch(_){}
@@ -1090,28 +1158,20 @@
   svg.addEventListener("pointerdown", (e) => {
     if (editingId) return;
 
-    const onNode = (e.target && e.target.closest && e.target.closest('[data-id]')) || (e.target && e.target.closest && e.target.closest('[data-collapse-for]'));
+    const onNode = (e.target && e.target.closest && (e.target.closest('[data-id]') || e.target.closest('[data-collapse-for]')));
     if (!onNode){
       selectedId = null;
       closeOverlays();
       renderAll();
 
       const cam = map.cam;
-      drag = { kind:"pan", pid:e.pointerId, sx:e.clientX, sy:e.clientY, baseX:cam.x, baseY:cam.y, moved:false };
+      drag = { kind:"pan", pid:e.pointerId, sx:e.clientX, sy:e.clientY, baseX:cam.x, baseY:cam.y, moved:false, pointerType:e.pointerType||"mouse" };
       try{ svg.setPointerCapture(e.pointerId); }catch(_){}
     }
   });
 
-  // double click on empty: add child from selected (as before)
-  svg.addEventListener("dblclick", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (editingId) return;
-
-    if (!selectedId) return;
-    const p = clientToWorld(e.clientX, e.clientY);
-    addChildFrom(selectedId, p);
-  });
+  // IMPORTANT: remove canvas dblclick add-child entirely (was creating extra nodes on iPad)
+  // (no dblclick handler here on purpose)
 
   wrap.addEventListener("dblclick", (e) => e.preventDefault());
 
@@ -1166,39 +1226,24 @@
     const n = selectedId ? getNode(selectedId) : null;
     if (!n) return;
 
-    if (act === "child"){
-      addChildFrom(selectedId);
-      return;
-    }
-    if (act === "edit"){
-      beginEdit(selectedId, true);
-      return;
-    }
-    if (act === "collapse"){
-      toggleCollapse(selectedId);
-      refreshMenuButtonsState();
-      return;
-    }
+    if (act === "child"){ addChildFrom(selectedId); return; }
+    if (act === "edit"){ beginEdit(selectedId, true); return; }
+    if (act === "collapse"){ toggleCollapse(selectedId); refreshMenuButtonsState(); return; }
+
     if (act === "bold"){
       n.fmt ||= {bold:false, italic:false, align:"center"};
       n.fmt.bold = !n.fmt.bold;
-      autosave();
-      renderAll();
-      return;
+      autosave(); renderAll(); return;
     }
     if (act === "italic"){
       n.fmt ||= {bold:false, italic:false, align:"center"};
       n.fmt.italic = !n.fmt.italic;
-      autosave();
-      renderAll();
-      return;
+      autosave(); renderAll(); return;
     }
     if (act === "al" || act === "ac" || act === "ar"){
       n.fmt ||= {bold:false, italic:false, align:"center"};
       n.fmt.align = (act === "al") ? "left" : (act === "ar" ? "right" : "center");
-      autosave();
-      renderAll();
-      return;
+      autosave(); renderAll(); return;
     }
     if (act === "emoji"){
       emojiOpen = !emojiOpen;
@@ -1335,7 +1380,6 @@
     const root = map.nodes.find(n => n.parentId == null) || map.nodes[0];
     if (root) selectedId = root.id;
 
-    // camera center on root
     const {w,h} = stageSize();
     const cam = map.cam;
     const centerX = (root ? root.x : 360);
@@ -1361,7 +1405,7 @@
 
   exportOneBtn.onclick = () => {
     commitMap();
-    const payload = { kind:"mindmap_project", version:12, project: store.projects[store.activeId] };
+    const payload = { kind:"mindmap_project", version:13, project: store.projects[store.activeId] };
     downloadJson(payload, safeName(active.name || "mindmap") + ".json");
     closeDownload();
     showToast("Экспортировано");
@@ -1369,7 +1413,7 @@
 
   exportAllBtn.onclick = () => {
     commitMap();
-    const payload = { kind:"mindmap_store", version:12, store };
+    const payload = { kind:"mindmap_store", version:13, store };
     downloadJson(payload, "mindmaps_all.json");
     closeDownload();
     showToast("Экспорт всех готов");
@@ -1429,6 +1473,17 @@
     fr.readAsText(f);
     e.target.value = "";
     closeDownload();
+  });
+
+  // menu
+  nodeBtn.addEventListener("pointerdown", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!selectedId) return;
+    menuOpen = !menuOpen;
+    emojiOpen = false;
+    positionNodeMenu();
+    positionEmojiPop();
   });
 
   // ---------- Init ----------
